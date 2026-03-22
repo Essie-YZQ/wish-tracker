@@ -1,30 +1,38 @@
 
 
 const storage_key = "wish_tracker_app_state";
+const total_wishes = 30;
 
 const sample_users = [
   {
-    user_id: "person_a",
-    name: "Person A",
+    user_id: "s",
+    name: "S",
     wish_balance: 0,
     total_earned: 0,
     total_spent: 0,
     habits: [
-      { habit_id: "person_a_gym", habit_name: "gym", target_per_week: 2, reward_value: 1 },
-      { habit_id: "person_a_foot_soak", habit_name: "foot_soak", target_per_week: 3, reward_value: 1 },
-      { habit_id: "person_a_no_smoking", habit_name: "no_smoking", target_per_week: 7, reward_value: 1 }
+      { habit_id: "s_study", habit_name: "study", display_name: "Study", target_per_week: 3, reward_value: 1 },
+      { habit_id: "s_sleep_early", habit_name: "sleep_early", display_name: "Sleep Early", target_per_week: 7, reward_value: 1 },
+      { habit_id: "s_workout", habit_name: "workout", display_name: "Workout", target_per_week: 2, reward_value: 1 },
+      { habit_id: "s_cooking", habit_name: "cooking", display_name: "Cooking", target_per_week: 3, reward_value: 1 },
+      { habit_id: "s_drink_water", habit_name: "drink_water", display_name: "Drink Water", target_per_week: 7, reward_value: 1 },
+      { habit_id: "s_dry_hair", habit_name: "dry_hair", display_name: "Dry Hair", target_per_week: 3, reward_value: 1 },
+      { habit_id: "s_practice_violin", habit_name: "practice_violin", display_name: "Practice Violin", target_per_week: 2, reward_value: 1 },
+      { habit_id: "s_foot_soak", habit_name: "foot_soak", display_name: "Foot Soak", target_per_week: 3, reward_value: 1 }
     ]
   },
   {
-    user_id: "person_b",
-    name: "Person B",
+    user_id: "kk",
+    name: "KK",
     wish_balance: 0,
     total_earned: 0,
     total_spent: 0,
     habits: [
-      { habit_id: "person_b_cooking", habit_name: "cooking", target_per_week: 3, reward_value: 1 },
-      { habit_id: "person_b_gym", habit_name: "gym", target_per_week: 2, reward_value: 1 },
-      { habit_id: "person_b_sleep_early", habit_name: "sleep_early", target_per_week: 4, reward_value: 1 }
+      { habit_id: "kk_workout", habit_name: "workout", display_name: "Workout", target_per_week: 2, reward_value: 1 },
+      { habit_id: "kk_study", habit_name: "study", display_name: "Study", target_per_week: 3, reward_value: 1 },
+      { habit_id: "kk_reduce_smoking", habit_name: "reduce_smoking", display_name: "Reduce Smoking", target_per_week: 7, reward_value: 1 },
+      { habit_id: "kk_didi", habit_name: "didi", display_name: "Didi", target_per_week: 1, reward_value: 1 },
+      { habit_id: "kk_sleep_early", habit_name: "sleep_early", display_name: "Sleep Early", target_per_week: 7, reward_value: 1 }
     ]
   }
 ];
@@ -43,14 +51,17 @@ function initialize_storage(force_reset = false) {
     return;
   }
 
+  save_state(create_initial_state());
+}
+
+function create_initial_state() {
   const week_start_date = get_week_start_date(new Date());
-  const initial_state = {
+
+  return {
     week_start_date,
-    pool_balance: 0,
+    pool_balance: total_wishes,
     users: sample_users.map((user) => create_user_state(user, week_start_date))
   };
-
-  save_state(initial_state);
 }
 
 function create_user_state(user, week_start_date) {
@@ -75,6 +86,7 @@ function create_habit_state(habit, week_start_date) {
   return {
     habit_id: habit.habit_id,
     habit_name: habit.habit_name,
+    display_name: habit.display_name,
     target_per_week: habit.target_per_week,
     reward_value: habit.reward_value,
     week_start_date,
@@ -117,21 +129,71 @@ function handle_click(event) {
 
 function get_state() {
   const raw_state = localStorage.getItem(storage_key);
-  const parsed_state = JSON.parse(raw_state);
+  const parsed_state = raw_state ? JSON.parse(raw_state) : null;
   const current_week_start = get_week_start_date(new Date());
+
+  if (!parsed_state || state_requires_reset(parsed_state)) {
+    const reset_state = create_initial_state();
+    save_state(reset_state);
+    return reset_state;
+  }
 
   // When the calendar week changes, carry balances forward and reset only weekly habit progress.
   if (parsed_state.week_start_date !== current_week_start) {
     const refreshed_state = rollover_to_current_week(parsed_state, current_week_start);
+    normalize_balances(refreshed_state);
     save_state(refreshed_state);
     return refreshed_state;
   }
 
+  normalize_balances(parsed_state);
   return parsed_state;
 }
 
 function save_state(state) {
+  normalize_balances(state);
   localStorage.setItem(storage_key, JSON.stringify(state));
+}
+
+function state_requires_reset(state) {
+  if (!state || !Array.isArray(state.users) || state.users.length !== sample_users.length) {
+    return true;
+  }
+
+  return sample_users.some((sample_user, user_index) => {
+    const saved_user = state.users[user_index];
+
+    if (!saved_user || saved_user.user_id !== sample_user.user_id || saved_user.name !== sample_user.name) {
+      return true;
+    }
+
+    if (!Array.isArray(saved_user.habits) || saved_user.habits.length !== sample_user.habits.length) {
+      return true;
+    }
+
+    return sample_user.habits.some((sample_habit, habit_index) => {
+      const saved_habit = saved_user.habits[habit_index];
+
+      return (
+        !saved_habit ||
+        saved_habit.habit_id !== sample_habit.habit_id ||
+        saved_habit.habit_name !== sample_habit.habit_name ||
+        saved_habit.display_name !== sample_habit.display_name ||
+        saved_habit.target_per_week !== sample_habit.target_per_week
+      );
+    });
+  });
+}
+
+function normalize_balances(state) {
+  state.users.forEach((user) => {
+    user.wish_balance = Math.max(0, Number(user.wish_balance) || 0);
+    user.total_earned = Math.max(0, Number(user.total_earned) || 0);
+    user.total_spent = Math.max(0, Number(user.total_spent) || 0);
+  });
+
+  const total_user_balance = state.users.reduce((sum, user) => sum + user.wish_balance, 0);
+  state.pool_balance = Math.max(0, total_wishes - total_user_balance);
 }
 
 function rollover_to_current_week(state, current_week_start) {
@@ -233,7 +295,7 @@ function render_habit_row(user_id, habit, week_dates) {
             data-habit-id="${habit.habit_id}"
             data-date-value="${date_value}"
             aria-pressed="${is_done}"
-            aria-label="Toggle ${habit.habit_name} for ${date_value}"
+            aria-label="Toggle ${habit.display_name} for ${date_value}"
           >
             ${button_label}
           </button>
@@ -244,7 +306,7 @@ function render_habit_row(user_id, habit, week_dates) {
 
   return `
     <tr>
-      <td class="habit_name">${format_habit_name(habit.habit_name)}</td>
+      <td class="habit_name">${habit.display_name}</td>
       ${day_cells}
       <td>${habit.done_count}</td>
       <td>${habit.target_per_week}</td>
@@ -338,16 +400,21 @@ function toggle_habit_day(user_id, habit_id, date_value) {
 
   habit.daily_status[date_value] = !habit.daily_status[date_value];
   habit.done_count = count_done_days(habit.daily_status);
-  sync_reward_status(user, habit, state.week_start_date);
+  sync_reward_status(state, user, habit, state.week_start_date);
   console.log("before save", habit.daily_status, habit.done_count);
   save_state(state);
   render_app();
 }
 
-function sync_reward_status(user, habit, current_week_start) {
+function sync_reward_status(state, user, habit, current_week_start) {
   if (habit.done_count >= habit.target_per_week && habit.is_reward_claimed === false) {
+    if (state.pool_balance < habit.reward_value) {
+      return;
+    }
+
     habit.is_reward_claimed = true;
     habit.earned_at = get_today_date_string();
+    state.pool_balance -= habit.reward_value;
     user.wish_balance += habit.reward_value;
     user.total_earned += habit.reward_value;
     return;
@@ -361,8 +428,9 @@ function sync_reward_status(user, habit, current_week_start) {
   ) {
     habit.is_reward_claimed = false;
     habit.earned_at = null;
-    user.wish_balance -= habit.reward_value;
-    user.total_earned -= habit.reward_value;
+    user.wish_balance = Math.max(0, user.wish_balance - habit.reward_value);
+    user.total_earned = Math.max(0, user.total_earned - habit.reward_value);
+    state.pool_balance += habit.reward_value;
   }
 }
 
@@ -492,8 +560,4 @@ function format_display_date(date_value) {
   const year = date_object.getFullYear();
 
   return `${month}/${day}/${year}`;
-}
-
-function format_habit_name(habit_name) {
-  return habit_name.replaceAll("_", " ");
 }
