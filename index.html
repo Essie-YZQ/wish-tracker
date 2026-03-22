@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shared Wish Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app_shell">
+    <section class="hero_section">
+      <div>
+        <p class="eyebrow">Two-person local MVP</p>
+        <h1>Shared Wish Tracker</h1>
+        <p class="hero_text">
+          Track weekly habits, auto-earn wishes when targets are reached, and move wishes between each person and the shared pool.
+        </p>
+      </div>
+      <button id="reset_demo_button" class="ghost_button" type="button">Reset demo data</button>
+    </section>
+
+    <section class="summary_section" id="summary_section"></section>
+
+    <section class="tracker_section">
+      <div class="section_heading">
+        <h2>Weekly trackers</h2>
+        <p id="week_label" class="section_text"></p>
+      </div>
+      <div id="tracker_container" class="tracker_container"></div>
+    </section>
+
+    <section class="actions_section">
+      <div class="section_heading">
+        <h2>Wish actions</h2>
+        <p class="section_text">Transfers and spending update balances immediately and never allow negative values.</p>
+      </div>
+      <div id="actions_container" class="actions_grid"></div>
+    </section>
+  </main>
+
+  <script src="./script.js"></script>
+</body>
+</html>
