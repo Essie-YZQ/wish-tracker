@@ -111,6 +111,12 @@ h2 {
   box-shadow: var(--shadow_color);
 }
 
+.summary_card_with_actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .summary_label {
   margin-bottom: 14px;
   color: var(--muted_color);
@@ -121,6 +127,39 @@ h2 {
   font-size: clamp(2.1rem, 3vw, 2.8rem);
   font-weight: 800;
   line-height: 1;
+}
+
+.balance_actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.mini_action_button {
+  padding: 10px 14px;
+  border: 1px solid rgba(184, 92, 56, 0.16);
+  border-radius: var(--radius_small);
+  background: #fff;
+  color: var(--ink_color);
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+}
+
+.mini_action_button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(184, 92, 56, 0.32);
+  box-shadow: 0 10px 18px rgba(76, 51, 29, 0.08);
+}
+
+.mini_action_button_secondary {
+  background: rgba(244, 239, 230, 0.6);
+}
+
+.balance_message {
+  margin: 0;
+  color: var(--warning_color);
+  font-size: 0.92rem;
+  font-weight: 700;
 }
 
 .tracker_section,

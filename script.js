@@ -60,6 +60,9 @@ function create_initial_state() {
   return {
     week_start_date,
     pool_balance: total_wishes,
+    last_action: null,
+    ui_message: "",
+    message_user_id: null,
     users: sample_users.map((user) => create_user_state(user, week_start_date))
   };
 }
@@ -117,7 +120,11 @@ function handle_click(event) {
   }
 
   if (action_button) {
-    perform_balance_action(action_button.dataset.action_type || action_button.dataset.actionType);
+    console.log("wish_action clicked", action_button.dataset.actionType || action_button.dataset.action_type);
+    perform_balance_action(
+      action_button.dataset.action_type || action_button.dataset.actionType,
+      action_button
+    );
     return;
   }
 
@@ -186,6 +193,10 @@ function state_requires_reset(state) {
 }
 
 function normalize_balances(state) {
+  state.last_action = state.last_action || null;
+  state.ui_message = typeof state.ui_message === "string" ? state.ui_message : "";
+  state.message_user_id = typeof state.message_user_id === "string" ? state.message_user_id : null;
+
   state.users.forEach((user) => {
     user.wish_balance = Math.max(0, Number(user.wish_balance) || 0);
     user.total_earned = Math.max(0, Number(user.total_earned) || 0);
@@ -200,6 +211,9 @@ function rollover_to_current_week(state, current_week_start) {
   return {
     ...state,
     week_start_date: current_week_start,
+    last_action: null,
+    ui_message: "",
+    message_user_id: null,
     users: state.users.map((user) => ({
       ...user,
       habits: user.habits.map((habit) => create_habit_state(habit, current_week_start))
@@ -221,18 +235,60 @@ function render_summary(state) {
   const person_b = state.users[1];
 
   summary_section.innerHTML = `
-    <article class="summary_card">
+    <article class="summary_card summary_card_with_actions">
       <p class="summary_label">${person_a.name} wish_balance</p>
       <div class="summary_value">${person_a.wish_balance}</div>
+      ${render_balance_actions(person_a, person_b, state)}
     </article>
-    <article class="summary_card">
+    <article class="summary_card summary_card_with_actions">
       <p class="summary_label">${person_b.name} wish_balance</p>
       <div class="summary_value">${person_b.wish_balance}</div>
+      ${render_balance_actions(person_b, person_a, state)}
     </article>
     <article class="summary_card">
       <p class="summary_label">Shared pool_balance</p>
       <div class="summary_value">${state.pool_balance}</div>
     </article>
+  `;
+}
+
+function render_balance_actions(current_user, other_user, state) {
+  const show_message = state.message_user_id === current_user.user_id && state.ui_message;
+
+  return `
+    <div class="balance_actions">
+      <button
+        class="mini_action_button"
+        type="button"
+        data-action="wish_action"
+        data-action-type="return_to_pool"
+        data-user-id="${current_user.user_id}"
+        data-target-id="pool"
+      >
+        Return to Pool
+      </button>
+      <button
+        class="mini_action_button"
+        type="button"
+        data-action="wish_action"
+        data-action-type="give_to_other"
+        data-user-id="${current_user.user_id}"
+        data-other-user-id="${other_user.user_id}"
+        data-target-id="${other_user.user_id}"
+      >
+        Give to Other
+      </button>
+      <button
+        class="mini_action_button mini_action_button_secondary"
+        type="button"
+        data-action="wish_action"
+        data-action-type="undo_last_action"
+        data-user-id="${current_user.user_id}"
+      >
+        Undo Last Action
+      </button>
+    </div>
+    ${show_message ? `<p class="balance_message">${state.ui_message}</p>` : ""}
   `;
 }
 
@@ -320,67 +376,11 @@ function render_habit_row(user_id, habit, week_dates) {
 }
 
 function render_actions(state) {
-  const person_a = state.users[0];
-  const person_b = state.users[1];
-  const actions = [
-    {
-      action_type: "give_a_to_b",
-      title: `Give 1 wish from ${person_a.name} to ${person_b.name}`,
-      text: `${person_a.name} balance: ${person_a.wish_balance}`,
-      disabled: person_a.wish_balance < 1
-    },
-    {
-      action_type: "give_b_to_a",
-      title: `Give 1 wish from ${person_b.name} to ${person_a.name}`,
-      text: `${person_b.name} balance: ${person_b.wish_balance}`,
-      disabled: person_b.wish_balance < 1
-    },
-    {
-      action_type: "move_a_to_pool",
-      title: `Move 1 wish from ${person_a.name} to shared pool`,
-      text: `${person_a.name} balance: ${person_a.wish_balance}`,
-      disabled: person_a.wish_balance < 1
-    },
-    {
-      action_type: "move_b_to_pool",
-      title: `Move 1 wish from ${person_b.name} to shared pool`,
-      text: `${person_b.name} balance: ${person_b.wish_balance}`,
-      disabled: person_b.wish_balance < 1
-    },
-    {
-      action_type: "spend_a",
-      title: `Spend 1 wish from ${person_a.name}`,
-      text: `${person_a.name} total_spent: ${person_a.total_spent}`,
-      disabled: person_a.wish_balance < 1
-    },
-    {
-      action_type: "spend_b",
-      title: `Spend 1 wish from ${person_b.name}`,
-      text: `${person_b.name} total_spent: ${person_b.total_spent}`,
-      disabled: person_b.wish_balance < 1
-    },
-    {
-      action_type: "spend_pool",
-      title: "Spend 1 wish from shared pool",
-      text: `Shared pool_balance: ${state.pool_balance}`,
-      disabled: state.pool_balance < 1
-    }
-  ];
+  const actions_container = document.getElementById("actions_container");
 
-  document.getElementById("actions_container").innerHTML = actions
-    .map((action) => `
-      <button
-        class="action_button"
-        type="button"
-        data_action="wish_action"
-        data_action_type="${action.action_type}"
-        ${action.disabled ? "disabled" : ""}
-      >
-        <span class="action_title">${action.title}</span>
-        <span class="action_text">${action.text}</span>
-      </button>
-    `)
-    .join("");
+  if (actions_container) {
+    actions_container.innerHTML = "";
+  }
 }
 
 function toggle_habit_day(user_id, habit_id, date_value) {
@@ -434,32 +434,26 @@ function sync_reward_status(state, user, habit, current_week_start) {
   }
 }
 
-function perform_balance_action(action_type) {
+function perform_balance_action(action_type, action_button) {
   const state = get_state();
-  const person_a = state.users[0];
-  const person_b = state.users[1];
+  const current_user_id = action_button?.dataset.userId;
+  const other_user_id = action_button?.dataset.otherUserId;
+  const current_user = state.users.find((user) => user.user_id === current_user_id);
+  const other_user = state.users.find((user) => user.user_id === other_user_id);
+
+  state.ui_message = "";
+  state.message_user_id = null;
+  console.log("perform_balance_action", action_type, current_user_id, other_user_id);
 
   switch (action_type) {
-    case "give_a_to_b":
-      transfer_between_users(person_a, person_b);
+    case "give_to_other":
+      give_to_other(current_user, other_user, state);
       break;
-    case "give_b_to_a":
-      transfer_between_users(person_b, person_a);
+    case "return_to_pool":
+      return_to_pool(current_user, state);
       break;
-    case "move_a_to_pool":
-      move_to_pool(person_a, state);
-      break;
-    case "move_b_to_pool":
-      move_to_pool(person_b, state);
-      break;
-    case "spend_a":
-      spend_from_user(person_a);
-      break;
-    case "spend_b":
-      spend_from_user(person_b);
-      break;
-    case "spend_pool":
-      spend_from_pool(state);
+    case "undo_last_action":
+      undo_last_action(state);
       break;
     default:
       return;
@@ -469,39 +463,73 @@ function perform_balance_action(action_type) {
   render_app();
 }
 
-function transfer_between_users(from_user, to_user) {
+function give_to_other(from_user, to_user, state) {
+  if (!from_user || !to_user) {
+    return;
+  }
+
   if (from_user.wish_balance < 1) {
+    show_no_wishes_message(state, from_user.user_id);
     return;
   }
 
   from_user.wish_balance -= 1;
   to_user.wish_balance += 1;
+  state.last_action = {
+    type: "give_to_other",
+    from_user_id: from_user.user_id,
+    to_user_id: to_user.user_id
+  };
 }
 
-function move_to_pool(user, state) {
+function return_to_pool(user, state) {
+  if (!user) {
+    return;
+  }
+
   if (user.wish_balance < 1) {
+    show_no_wishes_message(state, user.user_id);
     return;
   }
 
   user.wish_balance -= 1;
   state.pool_balance += 1;
+  state.last_action = {
+    type: "return_to_pool",
+    user_id: user.user_id
+  };
 }
 
-function spend_from_user(user) {
-  if (user.wish_balance < 1) {
+function undo_last_action(state) {
+  if (!state.last_action) {
     return;
   }
 
-  user.wish_balance -= 1;
-  user.total_spent += 1;
-}
+  if (state.last_action.type === "return_to_pool") {
+    const user = state.users.find((item) => item.user_id === state.last_action.user_id);
 
-function spend_from_pool(state) {
-  if (state.pool_balance < 1) {
-    return;
+    if (user && state.pool_balance > 0) {
+      user.wish_balance += 1;
+      state.pool_balance -= 1;
+    }
   }
 
-  state.pool_balance -= 1;
+  if (state.last_action.type === "give_to_other") {
+    const from_user = state.users.find((item) => item.user_id === state.last_action.from_user_id);
+    const to_user = state.users.find((item) => item.user_id === state.last_action.to_user_id);
+
+    if (from_user && to_user && to_user.wish_balance > 0) {
+      from_user.wish_balance += 1;
+      to_user.wish_balance -= 1;
+    }
+  }
+
+  state.last_action = null;
+}
+
+function show_no_wishes_message(state, user_id) {
+  state.ui_message = "No wishes available";
+  state.message_user_id = user_id;
 }
 
 function count_done_days(daily_status) {
