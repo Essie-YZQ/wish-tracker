@@ -11,14 +11,14 @@ const sample_users = [
     total_earned: 0,
     total_spent: 0,
     habits: [
-      { habit_id: "s_study", habit_name: "study", display_name: "Study", target_per_week: 3, reward_value: 1 },
-      { habit_id: "s_sleep_early", habit_name: "sleep_early", display_name: "Sleep Early", target_per_week: 7, reward_value: 1 },
-      { habit_id: "s_workout", habit_name: "workout", display_name: "Workout", target_per_week: 2, reward_value: 1 },
-      { habit_id: "s_cooking", habit_name: "cooking", display_name: "Cooking", target_per_week: 3, reward_value: 1 },
-      { habit_id: "s_drink_water", habit_name: "drink_water", display_name: "Drink Water", target_per_week: 7, reward_value: 1 },
-      { habit_id: "s_dry_hair", habit_name: "dry_hair", display_name: "Dry Hair", target_per_week: 3, reward_value: 1 },
-      { habit_id: "s_practice_violin", habit_name: "practice_violin", display_name: "Practice Violin", target_per_week: 2, reward_value: 1 },
-      { habit_id: "s_foot_soak", habit_name: "foot_soak", display_name: "Foot Soak", target_per_week: 3, reward_value: 1 }
+      { habit_id: "s_study", habit_name: "study", display_name: "Study", icon: "📚", target_per_week: 3, reward_value: 1 },
+      { habit_id: "s_sleep_early", habit_name: "sleep_early", display_name: "Sleep Early", icon: "🌙", target_per_week: 7, reward_value: 1 },
+      { habit_id: "s_workout", habit_name: "workout", display_name: "Workout", icon: "💪", target_per_week: 2, reward_value: 1 },
+      { habit_id: "s_cooking", habit_name: "cooking", display_name: "Cooking", icon: "🍜", target_per_week: 3, reward_value: 1 },
+      { habit_id: "s_drink_water", habit_name: "drink_water", display_name: "Drink Water", icon: "💧", target_per_week: 7, reward_value: 1 },
+      { habit_id: "s_dry_hair", habit_name: "dry_hair", display_name: "Dry Hair", icon: "💁🏻‍♀️", target_per_week: 3, reward_value: 1 },
+      { habit_id: "s_practice_violin", habit_name: "practice_violin", display_name: "Practice Violin", icon: "🎻", target_per_week: 2, reward_value: 1 },
+      { habit_id: "s_foot_soak", habit_name: "foot_soak", display_name: "Foot Soak", icon: "♨️", target_per_week: 3, reward_value: 1 }
     ]
   },
   {
@@ -28,11 +28,11 @@ const sample_users = [
     total_earned: 0,
     total_spent: 0,
     habits: [
-      { habit_id: "kk_workout", habit_name: "workout", display_name: "Workout", target_per_week: 2, reward_value: 1 },
-      { habit_id: "kk_study", habit_name: "study", display_name: "Study", target_per_week: 3, reward_value: 1 },
-      { habit_id: "kk_reduce_smoking", habit_name: "reduce_smoking", display_name: "Reduce Smoking", target_per_week: 7, reward_value: 1 },
-      { habit_id: "kk_didi", habit_name: "didi", display_name: "Didi", target_per_week: 1, reward_value: 1 },
-      { habit_id: "kk_sleep_early", habit_name: "sleep_early", display_name: "Sleep Early", target_per_week: 7, reward_value: 1 }
+      { habit_id: "kk_workout", habit_name: "workout", display_name: "Workout", icon: "💪", target_per_week: 2, reward_value: 1 },
+      { habit_id: "kk_study", habit_name: "study", display_name: "Study", icon: "📚", target_per_week: 3, reward_value: 1 },
+      { habit_id: "kk_reduce_smoking", habit_name: "reduce_smoking", display_name: "Reduce Smoking", icon: "🚭", target_per_week: 7, reward_value: 1 },
+      { habit_id: "kk_didi", habit_name: "didi", display_name: "Didi", icon: "☺️", target_per_week: 1, reward_value: 1 },
+      { habit_id: "kk_sleep_early", habit_name: "sleep_early", display_name: "Sleep Early", icon: "🌙", target_per_week: 7, reward_value: 1 }
     ]
   }
 ];
@@ -60,6 +60,7 @@ function create_initial_state() {
   return {
     week_start_date,
     pool_balance: total_wishes,
+    pool_added_this_week: 0,
     last_action: null,
     ui_message: "",
     message_user_id: null,
@@ -74,6 +75,7 @@ function create_user_state(user, week_start_date) {
     wish_balance: user.wish_balance,
     total_earned: user.total_earned,
     total_spent: user.total_spent,
+    weekly_transfer_icons: [],
     habits: user.habits.map((habit) => create_habit_state(habit, week_start_date))
   };
 }
@@ -90,6 +92,7 @@ function create_habit_state(habit, week_start_date) {
     habit_id: habit.habit_id,
     habit_name: habit.habit_name,
     display_name: habit.display_name,
+    icon: habit.icon || "○",
     target_per_week: habit.target_per_week,
     reward_value: habit.reward_value,
     week_start_date,
@@ -186,6 +189,7 @@ function state_requires_reset(state) {
         saved_habit.habit_id !== sample_habit.habit_id ||
         saved_habit.habit_name !== sample_habit.habit_name ||
         saved_habit.display_name !== sample_habit.display_name ||
+        saved_habit.icon !== sample_habit.icon ||
         saved_habit.target_per_week !== sample_habit.target_per_week
       );
     });
@@ -193,6 +197,7 @@ function state_requires_reset(state) {
 }
 
 function normalize_balances(state) {
+  state.pool_added_this_week = Math.max(0, Number(state.pool_added_this_week) || 0);
   state.last_action = state.last_action || null;
   state.ui_message = typeof state.ui_message === "string" ? state.ui_message : "";
   state.message_user_id = typeof state.message_user_id === "string" ? state.message_user_id : null;
@@ -201,6 +206,7 @@ function normalize_balances(state) {
     user.wish_balance = Math.max(0, Number(user.wish_balance) || 0);
     user.total_earned = Math.max(0, Number(user.total_earned) || 0);
     user.total_spent = Math.max(0, Number(user.total_spent) || 0);
+    user.weekly_transfer_icons = Array.isArray(user.weekly_transfer_icons) ? user.weekly_transfer_icons : [];
   });
 
   const total_user_balance = state.users.reduce((sum, user) => sum + user.wish_balance, 0);
@@ -211,6 +217,7 @@ function rollover_to_current_week(state, current_week_start) {
   return {
     ...state,
     week_start_date: current_week_start,
+    pool_added_this_week: 0,
     last_action: null,
     ui_message: "",
     message_user_id: null,
@@ -233,20 +240,49 @@ function render_summary(state) {
   const summary_section = document.getElementById("summary_section");
   const person_a = state.users[0];
   const person_b = state.users[1];
+  const person_a_weekly_earned = get_weekly_earned_display(person_a);
+  const person_b_weekly_earned = get_weekly_earned_display(person_b);
 
   summary_section.innerHTML = `
     <article class="summary_card summary_card_with_actions">
-      <p class="summary_label">${person_a.name} wish_balance</p>
+      <p class="summary_label">${person_a.name} Wishes</p>
       <div class="summary_value">${person_a.wish_balance}</div>
+      <p class="summary_meta">${person_a_weekly_earned}</p>
       ${render_balance_actions(person_a, person_b, state)}
     </article>
+    ${render_pool_card(state)}
     <article class="summary_card summary_card_with_actions">
-      <p class="summary_label">${person_b.name} wish_balance</p>
+      <p class="summary_label">${person_b.name} Wishes</p>
       <div class="summary_value">${person_b.wish_balance}</div>
+      <p class="summary_meta">${person_b_weekly_earned}</p>
       ${render_balance_actions(person_b, person_a, state)}
     </article>
-    <article class="summary_card">
-      <p class="summary_label">Shared pool_balance</p>
+  `;
+}
+
+function get_weekly_earned_display(user) {
+  const earned_icons = user.habits
+    .filter((habit) => habit.is_reward_claimed)
+    .map((habit) => habit.icon)
+    .concat(user.weekly_transfer_icons)
+    .join(" ");
+
+  return earned_icons ? `+ ${earned_icons} this week` : "+ this week";
+}
+
+function render_pool_card(state) {
+  const max_pool = 30;
+  const water_level = Math.min(100, (state.pool_balance / max_pool) * 100);
+
+  return `
+    <article class="summary_card summary_card_pool">
+      <p class="summary_label">Wish Pool</p>
+      <div class="pool_tank" aria-hidden="true">
+        <div class="pool_rim"></div>
+        <div class="pool_bowl">
+          <div class="pool_water" style="height: ${water_level}%;"></div>
+        </div>
+      </div>
       <div class="summary_value">${state.pool_balance}</div>
     </article>
   `;
@@ -320,9 +356,6 @@ function render_trackers(state) {
               <tr>
                 <th>habit_name</th>
                 ${week_dates.map((date_value) => `<th>${format_day_header(date_value)}</th>`).join("")}
-                <th>done_count</th>
-                <th>target_per_week</th>
-                <th>earned_status</th>
               </tr>
             </thead>
             <tbody>
@@ -336,10 +369,13 @@ function render_trackers(state) {
 }
 
 function render_habit_row(user_id, habit, week_dates) {
+  const progress_symbols = Array.from({ length: habit.target_per_week }, (_, index) => (
+    index < habit.done_count ? habit.icon : "○"
+  )).join(" ");
+
   const day_cells = week_dates
     .map((date_value) => {
       const is_done = Boolean(habit.daily_status[date_value]);
-      const button_label = is_done ? "Done" : "Open";
 
       return `
         <td>
@@ -352,9 +388,7 @@ function render_habit_row(user_id, habit, week_dates) {
             data-date-value="${date_value}"
             aria-pressed="${is_done}"
             aria-label="Toggle ${habit.display_name} for ${date_value}"
-          >
-            ${button_label}
-          </button>
+          ></button>
         </td>
       `;
     })
@@ -362,15 +396,11 @@ function render_habit_row(user_id, habit, week_dates) {
 
   return `
     <tr>
-      <td class="habit_name">${habit.display_name}</td>
-      ${day_cells}
-      <td>${habit.done_count}</td>
-      <td>${habit.target_per_week}</td>
-      <td>
-        <span class="earned_badge ${habit.is_reward_claimed ? "is_earned" : ""}">
-          ${habit.is_reward_claimed ? "Earned" : "Not yet"}
-        </span>
+      <td class="habit_name">
+        <span class="habit_title">${habit.display_name}</span>
+        <span class="habit_progress">${progress_symbols}</span>
       </td>
+      ${day_cells}
     </tr>
   `;
 }
@@ -475,10 +505,14 @@ function give_to_other(from_user, to_user, state) {
 
   from_user.wish_balance -= 1;
   to_user.wish_balance += 1;
+  const transfer_icon = from_user.user_id === "s" ? "👸" : "🐷";
+
+  to_user.weekly_transfer_icons.push(transfer_icon);
   state.last_action = {
     type: "give_to_other",
     from_user_id: from_user.user_id,
-    to_user_id: to_user.user_id
+    to_user_id: to_user.user_id,
+    transfer_icon
   };
 }
 
@@ -494,6 +528,7 @@ function return_to_pool(user, state) {
 
   user.wish_balance -= 1;
   state.pool_balance += 1;
+  state.pool_added_this_week += 1;
   state.last_action = {
     type: "return_to_pool",
     user_id: user.user_id
@@ -511,6 +546,7 @@ function undo_last_action(state) {
     if (user && state.pool_balance > 0) {
       user.wish_balance += 1;
       state.pool_balance -= 1;
+      state.pool_added_this_week = Math.max(0, state.pool_added_this_week - 1);
     }
   }
 
@@ -521,6 +557,11 @@ function undo_last_action(state) {
     if (from_user && to_user && to_user.wish_balance > 0) {
       from_user.wish_balance += 1;
       to_user.wish_balance -= 1;
+      const icon_index = to_user.weekly_transfer_icons.lastIndexOf(state.last_action.transfer_icon);
+
+      if (icon_index > -1) {
+        to_user.weekly_transfer_icons.splice(icon_index, 1);
+      }
     }
   }
 
