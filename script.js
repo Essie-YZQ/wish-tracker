@@ -1,3 +1,23 @@
+import { db } from './firebase.js';
+import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+async function loadFromFirebase() {
+  const docRef = doc(db, "shared_state", "main");
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+
+    console.log("Firebase data:", data);
+
+  } else {
+    console.log("No such document!");
+  }
+}
+
+
+
+
 
 
 const storage_key = "wish_tracker_app_state";
@@ -630,3 +650,5 @@ function format_display_date(date_value) {
 
   return `${month}/${day}/${year}`;
 }
+
+loadFromFirebase();
