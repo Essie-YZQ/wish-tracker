@@ -24,6 +24,15 @@ async function loadFromFirebase() {
       state.pool_balance = data.poolBalance;
     }
 
+
+    if (Array.isArray(data.sWeeklySources)) {
+      state.users[0].weekly_source_icons = data.sWeeklySources;
+    }   
+
+    if (Array.isArray(data.kkWeeklySources)) {
+      state.users[1].weekly_source_icons = data.kkWeeklySources;
+    }
+
     save_state(state);
     render_app();
   } else {
@@ -57,6 +66,14 @@ function subscribeToFirebaseBalances() {
       state.pool_balance = data.poolBalance;
     }
 
+    if (Array.isArray(data.sWeeklySources)) {
+      state.users[0].weekly_source_icons = data.sWeeklySources;
+    }
+
+    if (Array.isArray(data.kkWeeklySources)) {
+      state.users[1].weekly_source_icons = data.kkWeeklySources;
+    }
+    
     save_state(state);
     render_app();
   });
@@ -93,20 +110,32 @@ async function getLatestStateFromFirebase() {
 async function saveBalancesToFirebase(state) {
   const docRef = doc(db, "shared_state", "main");
 
-  const payload = {
+  // 👇 收集 S 的 weekly 来源
+  const sSources = [
+    ...state.users[0].weekly_transfer_icons,
+    ...state.users[0].habits
+      .filter(h => h.is_reward_claimed)
+      .map(h => h.icon)
+  ];
+
+  // 👇 收集 KK 的 weekly 来源
+  const kkSources = [
+    ...state.users[1].weekly_transfer_icons,
+    ...state.users[1].habits
+      .filter(h => h.is_reward_claimed)
+      .map(h => h.icon)
+  ];
+
+  await updateDoc(docRef, {
     sBalance: state.users[0].wish_balance,
     kkBalance: state.users[1].wish_balance,
-    poolBalance: state.pool_balance
-  };
+    poolBalance: state.pool_balance,
+    sWeeklySources: sSources,
+    kkWeeklySources: kkSources
+  });
 
-  console.log("About to save balances:", payload);
-
-  await updateDoc(docRef, payload);
-
-  const verifySnap = await getDoc(docRef);
-  console.log("Firebase after save:", verifySnap.data());
+  console.log("Saved balances + sources to Firebase");
 }
-
 
 const storage_key = "wish_tracker_app_state";
 const total_wishes = 30;
@@ -184,6 +213,7 @@ function create_user_state(user, week_start_date) {
     total_earned: user.total_earned,
     total_spent: user.total_spent,
     weekly_transfer_icons: [],
+    weekly_source_icons: [],
     habits: user.habits.map((habit) => create_habit_state(habit, week_start_date))
   };
 }
@@ -369,11 +399,9 @@ function render_summary(state) {
 }
 
 function get_weekly_earned_display(user) {
-  const earned_icons = user.habits
-    .filter((habit) => habit.is_reward_claimed)
-    .map((habit) => habit.icon)
-    .concat(user.weekly_transfer_icons)
-    .join(" ");
+  const earned_icons = Array.isArray(user.weekly_source_icons) && user.weekly_source_icons.length > 0
+    ? user.weekly_source_icons.join(" ")
+    : "";
 
   return earned_icons ? `+ ${earned_icons} this week` : "+ this week";
 }
