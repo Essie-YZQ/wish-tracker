@@ -1,4 +1,4 @@
-import { db } from './firebase.js';
+import { db } from './firebase.js?v=2';
 import { doc, getDoc, updateDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 async function loadFromFirebase() {
@@ -73,7 +73,7 @@ function subscribeToFirebaseBalances() {
     if (Array.isArray(data.kkWeeklySources)) {
       state.users[1].weekly_source_icons = data.kkWeeklySources;
     }
-    
+
     save_state(state);
     render_app();
   });
