@@ -1,5 +1,5 @@
 import { db } from './firebase.js';
-import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, getDoc, updateDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 async function loadFromFirebase() {
   const docRef = doc(db, "shared_state", "main");
@@ -10,14 +10,102 @@ async function loadFromFirebase() {
 
     console.log("Firebase data:", data);
 
+    const state = get_state();
+
+    if (typeof data.sBalance === "number") {
+      state.users[0].wish_balance = data.sBalance;
+    }
+
+    if (typeof data.kkBalance === "number") {
+      state.users[1].wish_balance = data.kkBalance;
+    }
+
+    if (typeof data.poolBalance === "number") {
+      state.pool_balance = data.poolBalance;
+    }
+
+    save_state(state);
+    render_app();
   } else {
     console.log("No such document!");
   }
 }
 
+function subscribeToFirebaseBalances() {
+  const docRef = doc(db, "shared_state", "main");
+
+  onSnapshot(docRef, (docSnap) => {
+    if (!docSnap.exists()) {
+      console.log("No such document!");
+      return;
+    }
+
+    const data = docSnap.data();
+    console.log("Realtime Firebase data:", data);
+
+    const state = get_state();
+
+    if (typeof data.sBalance === "number") {
+      state.users[0].wish_balance = data.sBalance;
+    }
+
+    if (typeof data.kkBalance === "number") {
+      state.users[1].wish_balance = data.kkBalance;
+    }
+
+    if (typeof data.poolBalance === "number") {
+      state.pool_balance = data.poolBalance;
+    }
+
+    save_state(state);
+    render_app();
+  });
+}
 
 
 
+
+
+async function getLatestStateFromFirebase() {
+  const state = get_state(); 
+  const docRef = doc(db, "shared_state", "main");
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+
+    if (typeof data.sBalance === "number") {
+      state.users[0].wish_balance = data.sBalance;
+    }
+
+    if (typeof data.kkBalance === "number") {
+      state.users[1].wish_balance = data.kkBalance;
+    }
+
+    if (typeof data.poolBalance === "number") {
+      state.pool_balance = data.poolBalance;
+    }
+  }
+
+  return state;
+}
+
+async function saveBalancesToFirebase(state) {
+  const docRef = doc(db, "shared_state", "main");
+
+  const payload = {
+    sBalance: state.users[0].wish_balance,
+    kkBalance: state.users[1].wish_balance,
+    poolBalance: state.pool_balance
+  };
+
+  console.log("About to save balances:", payload);
+
+  await updateDoc(docRef, payload);
+
+  const verifySnap = await getDoc(docRef);
+  console.log("Firebase after save:", verifySnap.data());
+}
 
 
 const storage_key = "wish_tracker_app_state";
@@ -433,7 +521,7 @@ function render_actions(state) {
   }
 }
 
-function toggle_habit_day(user_id, habit_id, date_value) {
+async function toggle_habit_day(user_id, habit_id, date_value) {
   console.log("toggle_habit_day called", user_id, habit_id, date_value);
   const state = get_state();
   const user = state.users.find((item) => item.user_id === user_id);
@@ -453,6 +541,7 @@ function toggle_habit_day(user_id, habit_id, date_value) {
   sync_reward_status(state, user, habit, state.week_start_date);
   console.log("before save", habit.daily_status, habit.done_count);
   save_state(state);
+  await saveBalancesToFirebase(state);
   render_app();
 }
 
@@ -484,7 +573,7 @@ function sync_reward_status(state, user, habit, current_week_start) {
   }
 }
 
-function perform_balance_action(action_type, action_button) {
+async function perform_balance_action(action_type, action_button) {
   const state = get_state();
   const current_user_id = action_button?.dataset.userId;
   const other_user_id = action_button?.dataset.otherUserId;
@@ -509,8 +598,9 @@ function perform_balance_action(action_type, action_button) {
       return;
   }
 
-  save_state(state);
-  render_app();
+save_state(state);
+await saveBalancesToFirebase(state);
+render_app();
 }
 
 function give_to_other(from_user, to_user, state) {
@@ -652,3 +742,4 @@ function format_display_date(date_value) {
 }
 
 loadFromFirebase();
+subscribeToFirebaseBalances();

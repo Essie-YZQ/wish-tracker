@@ -1,11 +1,8 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBsCYshoBZ6eB94OB2m9Jb0N2HPRfM-pW0",
+  apiKey: "AIzaSyBscYshoBZ6eB94OB2m9Jb0N2HPRFm-pW0",
   authDomain: "bloom-journal-2e692.firebaseapp.com",
   projectId: "bloom-journal-2e692",
   storageBucket: "bloom-journal-2e692.firebasestorage.app",
@@ -13,5 +10,7 @@ const firebaseConfig = {
   appId: "1:419365443549:web:e1488bc7adfa6c51574834"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+export { db };
