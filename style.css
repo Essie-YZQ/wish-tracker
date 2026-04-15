@@ -59,25 +59,49 @@ body::before {
   background-position: right -34px top -20px, left -30px bottom -18px, left top, right top, left bottom;
   filter: blur(1px);
   opacity: 0.9;
+  z-index: -1;
 }
 
-* {
-  background-color: transparent !important;
-}
 
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
+
   background:
+    linear-gradient(rgba(255, 248, 250, 0.35), rgba(255, 248, 250, 0.35)),  /* 👈 柔化玫瑰 */
+    url("./images/rose.png"),                                              /* 👈 新加 */
     radial-gradient(ellipse 320px 180px at 50% 54%, rgba(230, 241, 216, 0.2), transparent 72%),
     radial-gradient(ellipse 220px 140px at 24% 10%, rgba(255, 232, 179, 0.16), transparent 68%),
     radial-gradient(ellipse 240px 150px at 78% 20%, rgba(188, 210, 172, 0.12), transparent 70%),
     radial-gradient(ellipse 280px 170px at 32% 86%, rgba(86, 126, 97, 0.14), transparent 74%),
     radial-gradient(ellipse 260px 160px at 78% 82%, rgba(69, 108, 88, 0.12), transparent 74%);
-  filter: blur(30px);
-  opacity: 0.92;
+
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+
+  background-size:
+    cover,   /* 👈 给玫瑰 */
+    cover,   /* 👈 给玫瑰 */
+    auto,
+    auto,
+    auto,
+    auto,
+    auto;
+
+  background-position:
+    center,
+    center,
+    50% 54%,
+    24% 10%,
+    78% 20%,
+    32% 86%,
+    78% 82%;
+
+  filter: blur(20px);
+  opacity: 0.75;
+
+  z-index: -2;
 }
 
 button,
