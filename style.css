@@ -27,6 +27,8 @@ body {
   font-family: "Manrope", sans-serif;
   color: var(--ink_color);
   background:
+    linear-gradient(rgba(248, 244, 238, 0.18), rgba(248, 244, 238, 0.18)),
+    url("./images/rose.png"),
     radial-gradient(ellipse at 50% 42%, rgba(234, 243, 220, 0.5), transparent 34%),
     radial-gradient(ellipse at 18% 12%, rgba(50, 101, 76, 0.42), transparent 26%),
     radial-gradient(ellipse at 86% 14%, rgba(42, 89, 73, 0.4), transparent 26%),
@@ -34,6 +36,9 @@ body {
     radial-gradient(ellipse at 88% 84%, rgba(32, 74, 61, 0.3), transparent 28%),
     radial-gradient(ellipse at 24% 16%, rgba(255, 232, 173, 0.16), transparent 18%),
     linear-gradient(180deg, #2f6a53 0%, #2a624f 22%, #376f5c 46%, #6c9873 72%, #dceacb 100%);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-size: auto, cover, auto, auto, auto, auto, auto, auto, auto;
+  background-position: center, center, center, center, center, center, center, center, center;
   background-attachment: fixed;
 }
 
@@ -52,7 +57,7 @@ body::before {
   background-size: 290px 290px, 250px 250px, 520px 320px, 520px 320px, 560px 340px;
   background-position: right -34px top -20px, left -30px bottom -18px, left top, right top, left bottom;
   filter: blur(1px);
-  opacity: 1;
+  opacity: 0.9;
 }
 
 body::after {
