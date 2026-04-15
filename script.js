@@ -137,6 +137,52 @@ async function saveBalancesToFirebase(state) {
   console.log("Saved balances + sources to Firebase");
 }
 
+async function saveWeeklySnapshot(state) {
+  const docRef = doc(db, "shared_state", "main");
+  const docSnap = await getDoc(docRef);
+
+  if (!docSnap.exists()) {
+    return;
+  }
+
+  const data = docSnap.data();
+  let history = Array.isArray(data.history) ? data.history : [];
+
+  history = history.filter((item) => typeof item === "object" && item !== null);
+
+  const currentSnapshot = {
+    weekStart: state.week_start_date,
+    sBalance: state.users[0].wish_balance,
+    kkBalance: state.users[1].wish_balance,
+    poolBalance: state.pool_balance
+  };
+
+  const existingIndex = history.findIndex(
+    (item) => item.weekStart === state.week_start_date
+  );
+
+  if (existingIndex >= 0) {
+    history[existingIndex] = currentSnapshot;
+  } else {
+    history.push(currentSnapshot);
+  }
+
+  await updateDoc(docRef, { history });
+
+  console.log("Saved weekly snapshot:", currentSnapshot);
+}
+
+async function resetWeeklySourcesInFirebase() {
+  const docRef = doc(db, "shared_state", "main");
+
+  await updateDoc(docRef, {
+    sWeeklySources: [],
+    kkWeeklySources: []
+  });
+
+  console.log("Weekly sources reset in Firebase");
+}
+
 const storage_key = "wish_tracker_app_state";
 const total_wishes = 30;
 
@@ -287,12 +333,16 @@ function get_state() {
   }
 
   // When the calendar week changes, carry balances forward and reset only weekly habit progress.
+
+
   if (parsed_state.week_start_date !== current_week_start) {
-    const refreshed_state = rollover_to_current_week(parsed_state, current_week_start);
-    normalize_balances(refreshed_state);
-    save_state(refreshed_state);
-    return refreshed_state;
+  const refreshed_state = rollover_to_current_week(parsed_state, current_week_start);
+  resetWeeklySourcesInFirebase();
+  normalize_balances(refreshed_state);
+  save_state(refreshed_state);
+  return refreshed_state;
   }
+
 
   normalize_balances(parsed_state);
   return parsed_state;
@@ -361,6 +411,8 @@ function rollover_to_current_week(state, current_week_start) {
     message_user_id: null,
     users: state.users.map((user) => ({
       ...user,
+      weekly_transfer_icons: [],
+      weekly_source_icons: [],
       habits: user.habits.map((habit) => create_habit_state(habit, current_week_start))
     }))
   };
@@ -570,6 +622,7 @@ async function toggle_habit_day(user_id, habit_id, date_value) {
   console.log("before save", habit.daily_status, habit.done_count);
   save_state(state);
   await saveBalancesToFirebase(state);
+  await saveWeeklySnapshot(state);
   render_app();
 }
 
