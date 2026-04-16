@@ -26,10 +26,12 @@ body {
   min-height: 100vh;
   font-family: "Manrope", sans-serif;
   color: var(--ink_color);
-  background-image: url("./images/rose.png");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(rgba(255, 248, 250, 0.16), rgba(255, 248, 250, 0.16)),
+    url("./images/rose.png");
+  background-size: cover, 125% auto;
+  background-position: center, center top;
+  background-repeat: no-repeat, no-repeat;
   background-color: #f7eef1;
 }
 
