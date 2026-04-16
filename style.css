@@ -26,20 +26,18 @@ body {
   min-height: 100vh;
   font-family: "Manrope", sans-serif;
   color: var(--ink_color);
-
-  background-image:
-    linear-gradient(rgba(255, 248, 250, 0.08), rgba(255, 248, 250, 0.08)),
-    url("./images/rose.png");
-  background-size:
-    cover,
-    min(820px, 72vw) auto;
-  background-position:
-    center,
-    right 24px top 24px;
-  background-repeat:
-    no-repeat,
-    no-repeat;
   background-color: #f7eef1;
+}
+
+.rose_background_layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(255, 248, 250, 0.38), rgba(255, 248, 250, 0.38)),
+    url("https://essie-yzq.github.io/wish-tracker/images/rose.png") center / cover no-repeat;
+  opacity: 0.92;
 }
 
 body::before,
@@ -53,6 +51,8 @@ input {
 }
 
 .app_shell {
+  position: relative;
+  z-index: 1;
   width: min(1200px, calc(100% - 32px));
   margin: 0 auto;
   padding: 40px 0 56px;
