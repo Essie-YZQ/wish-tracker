@@ -26,10 +26,10 @@ body {
   min-height: 100vh;
   font-family: "Manrope", sans-serif;
   color: var(--ink_color);
-  background:
-    linear-gradient(rgba(255, 248, 250, 0.28), rgba(255, 248, 250, 0.28)),
-    url("https://essie-yzq.github.io/wish-tracker/images/rose.png") center / cover no-repeat;
-  background-attachment: scroll;
+  background-image: url("./images/rose.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   background-color: #f7eef1;
 }
 
@@ -48,6 +48,7 @@ input {
   margin: 0 auto;
   padding: 40px 0 56px;
 }
+
 
 .hero_section,
 .tracker_section,
