@@ -28,15 +28,15 @@ body {
   color: var(--ink_color);
   background:
     linear-gradient(rgba(255, 248, 250, 0.28), rgba(255, 248, 250, 0.28)),
-    url("./images/rose.png") center / cover no-repeat;
+    url("https://essie-yzq.github.io/wish-tracker/images/rose.png") center / cover no-repeat;
   background-attachment: scroll;
+  background-color: #f7eef1;
 }
 
 body::before,
 body::after {
   content: none;
 }
-
 
 button,
 input {
