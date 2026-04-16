@@ -1,7 +1,7 @@
 :root {
   --bg_color: #1f4a3c;
-  --panel_color: rgba(255, 255, 251, 0.88);
-  --panel_strong: rgba(255, 255, 255, 0.92);
+  --panel_color: rgba(255, 255, 251, 0.58);
+  --panel_strong: rgba(255, 255, 255, 0.68);
   --ink_color: #233124;
   --muted_color: #647560;
   --line_color: rgba(88, 114, 82, 0.14);
