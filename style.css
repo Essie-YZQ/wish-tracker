@@ -20,68 +20,6 @@
   box-sizing: border-box;
 }
 
-/*
-body {
-  position: relative;
-  margin: 0;
-  min-height: 100vh;
-  font-family: "Manrope", sans-serif;
-  color: var(--ink_color);
-  background:
-    linear-gradient(rgba(248, 244, 238, 0.18), rgba(248, 244, 238, 0.18)),
-    url("https://essie-yzq.github.io/wish-tracker/images/rose.png")
-    radial-gradient(ellipse at 50% 42%, rgba(234, 243, 220, 0.5), transparent 34%),
-    radial-gradient(ellipse at 18% 12%, rgba(50, 101, 76, 0.42), transparent 26%),
-    radial-gradient(ellipse at 86% 14%, rgba(42, 89, 73, 0.4), transparent 26%),
-    radial-gradient(ellipse at 12% 82%, rgba(38, 82, 63, 0.34), transparent 28%),
-    radial-gradient(ellipse at 88% 84%, rgba(32, 74, 61, 0.3), transparent 28%),
-    radial-gradient(ellipse at 24% 16%, rgba(255, 232, 173, 0.16), transparent 18%),
-    linear-gradient(180deg, #2f6a53 0%, #2a624f 22%, #376f5c 46%, #6c9873 72%, #dceacb 100%);
-  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, no-repeat;
-  background-size: auto, cover, auto, auto, auto, auto, auto, auto, auto;
-  background-position: center, center, center, center, center, center, center, center, center;
-  background-attachment: fixed;
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 260 260'%3E%3Cg fill='%231a402f' fill-opacity='.16'%3E%3Cpath d='M132 18c21 16 33 39 34 68 18-23 44-35 73-35-4 31-20 58-46 79 30 3 54 15 67 36-31 10-61 9-90-3 13 27 15 53 6 78-23-18-37-43-42-74-7 30-22 55-46 74-8-28-6-55 7-81-29 14-59 16-91 7 13-24 38-39 69-43-25-19-40-45-44-75 29 1 55 13 74 35 0-29 10-52 29-66Z'/%3E%3Ccircle cx='131' cy='74' r='14' fill='%232d6b50' fill-opacity='.10'/%3E%3Ccircle cx='89' cy='111' r='12' fill='%232d6b50' fill-opacity='.10'/%3E%3Ccircle cx='171' cy='113' r='12' fill='%232d6b50' fill-opacity='.10'/%3E%3Ccircle cx='111' cy='156' r='10' fill='%232d6b50' fill-opacity='.10'/%3E%3Ccircle cx='151' cy='156' r='10' fill='%232d6b50' fill-opacity='.10'/%3E%3C/g%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 260 260'%3E%3Cg fill='%23183c2d' fill-opacity='.14'%3E%3Cpath d='M132 18c21 16 33 39 34 68 18-23 44-35 73-35-4 31-20 58-46 79 30 3 54 15 67 36-31 10-61 9-90-3 13 27 15 53 6 78-23-18-37-43-42-74-7 30-22 55-46 74-8-28-6-55 7-81-29 14-59 16-91 7 13-24 38-39 69-43-25-19-40-45-44-75 29 1 55 13 74 35 0-29 10-52 29-66Z'/%3E%3Ccircle cx='131' cy='74' r='14' fill='%23295e47' fill-opacity='.10'/%3E%3Ccircle cx='89' cy='111' r='12' fill='%23295e47' fill-opacity='.10'/%3E%3Ccircle cx='171' cy='113' r='12' fill='%23295e47' fill-opacity='.10'/%3E%3Ccircle cx='111' cy='156' r='10' fill='%23295e47' fill-opacity='.10'/%3E%3Ccircle cx='151' cy='156' r='10' fill='%23295e47' fill-opacity='.10'/%3E%3C/g%3E%3C/svg%3E"),
-    radial-gradient(ellipse at 8% 18%, rgba(22, 52, 40, 0.18), transparent 26%),
-    radial-gradient(ellipse at 92% 24%, rgba(20, 48, 39, 0.16), transparent 24%),
-    radial-gradient(ellipse at 16% 88%, rgba(24, 56, 42, 0.16), transparent 24%);
-  background-repeat: no-repeat;
-  background-size: 290px 290px, 250px 250px, 520px 320px, 520px 320px, 560px 340px;
-  background-position: right -34px top -20px, left -30px bottom -18px, left top, right top, left bottom;
-  filter: blur(1px);
-  opacity: 0.9;
-}
-
-
-
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 320px 180px at 50% 54%, rgba(230, 241, 216, 0.2), transparent 72%),
-    radial-gradient(ellipse 220px 140px at 24% 10%, rgba(255, 232, 179, 0.16), transparent 68%),
-    radial-gradient(ellipse 240px 150px at 78% 20%, rgba(188, 210, 172, 0.12), transparent 70%),
-    radial-gradient(ellipse 280px 170px at 32% 86%, rgba(86, 126, 97, 0.14), transparent 74%),
-    radial-gradient(ellipse 260px 160px at 78% 82%, rgba(69, 108, 88, 0.12), transparent 74%);
-  filter: blur(30px);
-  opacity: 0.92;
-}
-
-
-*/
-
-
 body {
   position: relative;
   margin: 0;
