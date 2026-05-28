@@ -664,9 +664,9 @@ async function toggle_habit_day(user_id, habit_id, date_value) {
   sync_reward_status(state, user, habit, state.week_start_date);
   console.log("before save", habit.daily_status, habit.done_count);
   save_state(state);
+  render_app();
   await saveBalancesToFirebase(state, user_id);
   await saveWeeklySnapshot(state);
-  render_app();
 }
 
 function sync_reward_status(state, user, habit, current_week_start) {

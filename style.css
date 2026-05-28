@@ -338,6 +338,18 @@ tbody tr:last-child td {
   line-height: 1;
 }
 
+@keyframes check_in {
+  0%   { transform: scale(0.80); }
+  60%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+@keyframes uncheck_out {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.88); }
+  100% { transform: scale(1); }
+}
+
 .day_toggle {
   position: relative;
   width: 42px;
@@ -355,6 +367,10 @@ tbody tr:last-child td {
   box-shadow: 0 8px 16px rgba(184, 92, 56, 0.1);
 }
 
+.day_toggle:active {
+  transform: scale(0.88);
+}
+
 .day_toggle::after {
   content: "";
   position: absolute;
@@ -370,6 +386,7 @@ tbody tr:last-child td {
   background: linear-gradient(180deg, #cf7b58, var(--accent_color));
   border-color: rgba(184, 92, 56, 0.72);
   box-shadow: 0 10px 18px rgba(184, 92, 56, 0.16);
+  animation: check_in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .day_toggle.is_done::after {
