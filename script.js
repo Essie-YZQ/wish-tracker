@@ -1,6 +1,27 @@
 import { db } from './firebase.js?v=2';
 import { doc, getDoc, updateDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
+function applyHabitStatus(habits, habitStatusData) {
+  if (!habitStatusData || typeof habitStatusData !== "object") return;
+
+  habits.forEach(habit => {
+    const habitData = habitStatusData[habit.habit_id];
+    if (!habitData) return;
+
+    Object.keys(habit.daily_status).forEach(date => {
+      if (typeof habitData[date] === "boolean") {
+        habit.daily_status[date] = habitData[date];
+      }
+    });
+
+    habit.done_count = count_done_days(habit.daily_status);
+
+    if (typeof habitData.is_reward_claimed === "boolean") {
+      habit.is_reward_claimed = habitData.is_reward_claimed;
+    }
+  });
+}
+
 async function loadFromFirebase() {
   const docRef = doc(db, "shared_state", "main");
   const docSnap = await getDoc(docRef);
@@ -32,6 +53,9 @@ async function loadFromFirebase() {
     if (Array.isArray(data.kkWeeklySources)) {
       state.users[1].weekly_source_icons = data.kkWeeklySources;
     }
+
+    applyHabitStatus(state.users[0].habits, data.sHabitStatus);
+    applyHabitStatus(state.users[1].habits, data.kkHabitStatus);
 
     save_state(state);
     render_app();
@@ -74,6 +98,9 @@ function subscribeToFirebaseBalances() {
       state.users[1].weekly_source_icons = data.kkWeeklySources;
     }
 
+    applyHabitStatus(state.users[0].habits, data.sHabitStatus);
+    applyHabitStatus(state.users[1].habits, data.kkHabitStatus);
+
     save_state(state);
     render_app();
   });
@@ -107,7 +134,7 @@ async function getLatestStateFromFirebase() {
   return state;
 }
 
-async function saveBalancesToFirebase(state) {
+async function saveBalancesToFirebase(state, habit_user_id = null) {
   const docRef = doc(db, "shared_state", "main");
 
   // 👇 收集 S 的 weekly 来源
@@ -126,14 +153,30 @@ async function saveBalancesToFirebase(state) {
       .map(h => h.icon)
   ];
 
-  await updateDoc(docRef, {
+  const update = {
     sBalance: state.users[0].wish_balance,
     kkBalance: state.users[1].wish_balance,
     poolBalance: state.pool_balance,
     sWeeklySources: sSources,
     kkWeeklySources: kkSources
-  });
+  };
 
+  if (habit_user_id) {
+    const user = state.users.find(u => u.user_id === habit_user_id);
+    if (user) {
+      const habitStatus = {};
+      user.habits.forEach(habit => {
+        habitStatus[habit.habit_id] = {
+          ...habit.daily_status,
+          is_reward_claimed: habit.is_reward_claimed,
+          done_count: habit.done_count
+        };
+      });
+      update[habit_user_id === "s" ? "sHabitStatus" : "kkHabitStatus"] = habitStatus;
+    }
+  }
+
+  await updateDoc(docRef, update);
   console.log("Saved balances + sources to Firebase");
 }
 
@@ -621,7 +664,7 @@ async function toggle_habit_day(user_id, habit_id, date_value) {
   sync_reward_status(state, user, habit, state.week_start_date);
   console.log("before save", habit.daily_status, habit.done_count);
   save_state(state);
-  await saveBalancesToFirebase(state);
+  await saveBalancesToFirebase(state, user_id);
   await saveWeeklySnapshot(state);
   render_app();
 }
@@ -655,7 +698,7 @@ function sync_reward_status(state, user, habit, current_week_start) {
 }
 
 async function perform_balance_action(action_type, action_button) {
-  const state = get_state();
+  const state = await getLatestStateFromFirebase();
   const current_user_id = action_button?.dataset.userId;
   const other_user_id = action_button?.dataset.otherUserId;
   const current_user = state.users.find((user) => user.user_id === current_user_id);
