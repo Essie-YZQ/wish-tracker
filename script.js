@@ -244,7 +244,8 @@ const sample_users = [
       { habit_id: "s_drink_water", habit_name: "drink_water", display_name: "Drink Water", icon: "💧", target_per_week: 7, reward_value: 1 },
       { habit_id: "s_dry_hair", habit_name: "dry_hair", display_name: "Dry Hair", icon: "💁🏻‍♀️", target_per_week: 3, reward_value: 1 },
       { habit_id: "s_practice_violin", habit_name: "practice_violin", display_name: "Practice Violin", icon: "🎻", target_per_week: 2, reward_value: 1 },
-      { habit_id: "s_foot_soak", habit_name: "foot_soak", display_name: "Foot Soak", icon: "♨️", target_per_week: 3, reward_value: 1 }
+      { habit_id: "s_foot_soak", habit_name: "foot_soak", display_name: "Foot Soak", icon: "♨️", target_per_week: 3, reward_value: 1 },
+      { habit_id: "s_meet_friends", habit_name: "meet_friends", display_name: "Meet Friends", icon: "👭", target_per_week: 1, reward_value: 1 }
     ]
   },
   {
