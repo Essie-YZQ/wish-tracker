@@ -661,10 +661,15 @@ async function toggle_habit_day(user_id, habit_id, date_value) {
 
   habit.daily_status[date_value] = !habit.daily_status[date_value];
   habit.done_count = count_done_days(habit.daily_status);
+  const was_claimed = habit.is_reward_claimed;
   sync_reward_status(state, user, habit, state.week_start_date);
+  const just_earned = !was_claimed && habit.is_reward_claimed;
   console.log("before save", habit.daily_status, habit.done_count);
   save_state(state);
   render_app();
+  if (just_earned) {
+    confetti({ particleCount: 80, spread: 75, origin: { y: 0.65 }, colors: ["#cf7b58", "#e8a87c", "#f5d5c0", "#b85c38"] });
+  }
   await saveBalancesToFirebase(state, user_id);
   await saveWeeklySnapshot(state);
 }
