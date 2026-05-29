@@ -130,6 +130,7 @@ h2 {
   flex-direction: column;
   align-items: center;
   text-align: center;
+  animation: pool_glow 3.5s ease-in-out infinite;
 }
 
 .summary_label {
@@ -142,6 +143,22 @@ h2 {
   font-size: clamp(2.1rem, 3vw, 2.8rem);
   font-weight: 800;
   line-height: 1;
+}
+
+@keyframes water_shimmer {
+  0%   { left: -60%; }
+  100% { left: 120%; }
+}
+
+@keyframes sparkle_float {
+  0%   { opacity: 0; transform: translateY(0) scale(0.6); }
+  35%  { opacity: 1; transform: translateY(-10px) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-22px) scale(0.5); }
+}
+
+@keyframes pool_glow {
+  0%, 100% { box-shadow: var(--shadow_color); }
+  50%       { box-shadow: var(--shadow_color), 0 0 28px rgba(101, 178, 226, 0.42); }
 }
 
 .pool_tank {
@@ -201,12 +218,41 @@ h2 {
   bottom: 0;
   left: 0;
   width: 100%;
+  overflow: hidden;
   background:
     linear-gradient(180deg, rgba(158, 220, 247, 0.84), rgba(101, 178, 226, 0.95));
   box-shadow:
     inset 0 2px 0 rgba(255, 255, 255, 0.28),
     0 -1px 0 rgba(210, 241, 255, 0.5);
 }
+
+.pool_water::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: water_shimmer 2.8s ease-in-out infinite;
+}
+
+.pool_sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sparkle {
+  position: absolute;
+  font-size: 0.85rem;
+  animation: sparkle_float 2.6s ease-in-out infinite;
+  opacity: 0;
+}
+
+.sparkle.s1 { bottom: 52%; left: 10%; animation-delay: 0s; }
+.sparkle.s2 { bottom: 42%; right: 12%; animation-delay: 1s; }
+.sparkle.s3 { bottom: 62%; left: 44%; animation-delay: 1.9s; }
 
 .balance_actions {
   display: flex;

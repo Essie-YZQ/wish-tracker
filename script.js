@@ -514,6 +514,11 @@ function render_pool_card(state) {
         <div class="pool_bowl">
           <div class="pool_water" style="height: ${water_level}%;"></div>
         </div>
+        <div class="pool_sparkles">
+          <span class="sparkle s1">✨</span>
+          <span class="sparkle s2">✨</span>
+          <span class="sparkle s3">✨</span>
+        </div>
       </div>
       <div class="summary_value">${state.pool_balance}</div>
     </article>
