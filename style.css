@@ -539,16 +539,64 @@ h2 {
 .card_vase_area {
   flex: 1;
   display: flex;
+  flex-direction: row;
   align-items: flex-end;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 6px;
 }
 
 .user_card_reverse .card_vase_area {
-  justify-content: flex-start;
+  flex-direction: row-reverse;
 }
 
 .user_card_reverse .summary_label {
   text-align: right;
+}
+
+/* Flower picker — 6-column grid of clickable flower icons */
+.flower_picker {
+  display: grid;
+  grid-template-columns: repeat(6, 30px);
+  gap: 3px;
+  align-self: flex-end;
+}
+
+.flower_btn {
+  background: none;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  padding: 1px;
+  cursor: pointer;
+  transition: border-color 120ms, background 120ms, transform 100ms;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 50px;
+  overflow: visible;
+}
+
+.flower_btn svg {
+  width: 30px;
+  height: auto;
+  overflow: visible;
+}
+
+.flower_btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.55);
+  border-color: rgba(160,120,100,0.35);
+  transform: translateY(-2px);
+}
+
+.flower_btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.flower_btn_locked,
+.flower_btn:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .user_card_row {
