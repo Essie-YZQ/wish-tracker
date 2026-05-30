@@ -514,6 +514,20 @@ h2 {
   box-shadow: 0 3px 10px rgba(100,160,220,0.13);
 }
 
+.crystal_vase {
+  margin: 4px 0 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.vase_svg {
+  width: 72px;
+  height: auto;
+  filter:
+    drop-shadow(0 5px 16px rgba(120,170,218,0.20))
+    drop-shadow(0 0 4px rgba(255,255,255,0.12));
+}
+
 .balance_actions {
   display: flex;
   flex-wrap: wrap;
