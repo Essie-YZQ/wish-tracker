@@ -479,27 +479,27 @@ function render_summary(state) {
 
   summary_section.innerHTML = `
     <article class="summary_card user_card">
-      <div class="user_card_content">
-        <p class="summary_label">${person_a.name} Wishes</p>
-        <div class="user_card_row">
-          <div class="summary_value">${person_a.wish_balance}</div>
-          <p class="summary_meta">${person_a_weekly_earned}</p>
-        </div>
-        ${render_balance_actions(person_a, person_b, state)}
+      <p class="summary_label">${person_a.name} Wishes</p>
+      <div class="card_vase_area">
+        ${render_crystal_glass(person_a.user_id, person_a.wish_balance)}
       </div>
-      ${render_crystal_glass(person_a.user_id, person_a.wish_balance)}
+      <div class="user_card_row">
+        <div class="summary_value">${person_a.wish_balance}</div>
+        <p class="summary_meta">${person_a_weekly_earned}</p>
+      </div>
+      ${render_balance_actions(person_a, person_b, state)}
     </article>
     ${render_pool_card(state)}
     <article class="summary_card user_card user_card_reverse">
-      <div class="user_card_content">
-        <p class="summary_label">${person_b.name} Wishes</p>
-        <div class="user_card_row">
-          <div class="summary_value">${person_b.wish_balance}</div>
-          <p class="summary_meta">${person_b_weekly_earned}</p>
-        </div>
-        ${render_balance_actions(person_b, person_a, state)}
+      <p class="summary_label">${person_b.name} Wishes</p>
+      <div class="card_vase_area">
+        ${render_crystal_glass(person_b.user_id, person_b.wish_balance)}
       </div>
-      ${render_crystal_glass(person_b.user_id, person_b.wish_balance)}
+      <div class="user_card_row">
+        <div class="summary_value">${person_b.wish_balance}</div>
+        <p class="summary_meta">${person_b_weekly_earned}</p>
+      </div>
+      ${render_balance_actions(person_b, person_a, state)}
     </article>
   `;
 }
@@ -514,31 +514,24 @@ function get_weekly_earned_display(user) {
 
 function render_crystal_glass(user_id, wish_balance) {
   const water_pct = Math.min(100, (wish_balance / total_wishes) * 100);
-  // Interior fills from y=5 (rim) to y=92 (base), height=87
-  const water_y = Math.round(5 + 87 * (1 - water_pct / 100));
+  // Interior fills from y=4 (rim) to y=100 (base), height=96
+  const water_y = Math.round(4 + 96 * (1 - water_pct / 100));
   const cid = `vc_${user_id}`;
   const wg  = `wg_${user_id}`;
   const bg  = `bg_${user_id}`;
-  // Cone/funnel vase: wide flat rim at top, tapers to narrower flat base
-  const vp = "M 4,4 L 76,4 C 74,52 67,84 63,93 L 17,93 C 13,84 6,52 4,4 Z";
+  const rg  = `rg_${user_id}`;
+  // Stepped cylinder: narrow neck (x=24-56) on top of wide body (x=8-72), flat shoulder ledge at y=45
+  const vp = "M 24,4 L 56,4 L 56,45 L 72,45 L 72,97 C 72,101 8,101 8,97 L 8,45 L 24,45 Z";
 
-  // 13 converging ribs: top x=4..76, bottom x=17..63
-  const n = 12;
-  const ribs = Array.from({length: n + 1}, (_, i) => {
-    const tx = Math.round(4 + i * 72 / n);
-    const bx = Math.round(17 + i * 46 / n);
-    return `<line x1="${tx}" y1="4" x2="${bx}" y2="93" stroke="rgba(255,255,255,0.28)" stroke-width="2"/>`;
-  }).join("");
-
-  const valleys = Array.from({length: n}, (_, i) => {
-    const tx = Math.round(4 + (i + 0.5) * 72 / n);
-    const bx = Math.round(17 + (i + 0.5) * 46 / n);
-    return `<line x1="${tx}" y1="4" x2="${bx}" y2="93" stroke="rgba(15,45,80,0.07)" stroke-width="1.2"/>`;
-  }).join("");
+  // 15 uniform vertical ribs — clip-path auto hides those outside the narrow neck
+  const rib_xs  = [4,9,14,19,24,29,34,39,44,49,54,59,64,69,74,76];
+  const val_xs  = [6.5,11.5,16.5,21.5,26.5,31.5,36.5,41.5,46.5,51.5,56.5,61.5,66.5,71.5,75];
+  const ribs    = rib_xs.map(x => `<line x1="${x}" y1="0" x2="${x}" y2="104" stroke="rgba(255,255,255,0.07)" stroke-width="1.5"/>`).join("");
+  const valleys = val_xs.map(x  => `<line x1="${x}" y1="0" x2="${x}" y2="104" stroke="rgba(15,45,80,0.04)"  stroke-width="1"/>`).join("");
 
   return `
     <div class="crystal_vase" aria-hidden="true">
-      <svg class="vase_svg" viewBox="0 0 80 98" xmlns="http://www.w3.org/2000/svg">
+      <svg class="vase_svg" viewBox="0 0 80 104" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <clipPath id="${cid}"><path d="${vp}"/></clipPath>
           <linearGradient id="${wg}" x1="0" y1="0" x2="0" y2="1">
@@ -546,31 +539,46 @@ function render_crystal_glass(user_id, wish_balance) {
             <stop offset="100%" stop-color="rgba(80,155,208,0.84)"/>
           </linearGradient>
           <linearGradient id="${bg}" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%"   stop-color="rgba(255,255,255,0.40)"/>
-            <stop offset="16%"  stop-color="rgba(255,255,255,0.10)"/>
-            <stop offset="50%"  stop-color="rgba(255,255,255,0.01)"/>
-            <stop offset="84%"  stop-color="rgba(10,40,75,0.04)"/>
-            <stop offset="100%" stop-color="rgba(10,40,75,0.12)"/>
+            <stop offset="0%"   stop-color="rgba(255,255,255,0.60)"/>
+            <stop offset="14%"  stop-color="rgba(255,255,255,0.14)"/>
+            <stop offset="48%"  stop-color="rgba(255,255,255,0.01)"/>
+            <stop offset="82%"  stop-color="rgba(10,40,75,0.08)"/>
+            <stop offset="100%" stop-color="rgba(10,40,75,0.24)"/>
           </linearGradient>
+          <radialGradient id="${rg}" cx="28%" cy="15%" r="65%">
+            <stop offset="0%"   stop-color="rgba(255,255,255,0.24)"/>
+            <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+          </radialGradient>
         </defs>
         <!-- Water fill -->
-        <rect clip-path="url(#${cid})" x="0" y="${water_y}" width="80" height="98" fill="url(#${wg})"/>
+        <rect clip-path="url(#${cid})" x="0" y="${water_y}" width="80" height="104" fill="url(#${wg})"/>
         <!-- Water shimmer -->
-        <rect clip-path="url(#${cid})" x="-22" y="${water_y}" width="18" height="98" fill="rgba(255,255,255,0.24)">
+        <rect clip-path="url(#${cid})" x="-22" y="${water_y}" width="18" height="104" fill="rgba(255,255,255,0.24)">
           <animateTransform attributeName="transform" type="translate" from="0 0" to="106 0" dur="3.2s" repeatCount="indefinite"/>
         </rect>
         <!-- Glass body -->
         <path d="${vp}" fill="rgba(140,178,216,0.26)" stroke="rgba(255,255,255,0.42)" stroke-width="1.4"/>
-        <!-- Converging ribs -->
+        <!-- Vertical ribs -->
         <g clip-path="url(#${cid})" fill="none">${ribs}${valleys}</g>
-        <!-- Left-to-right 3D gradient overlay -->
-        <rect clip-path="url(#${cid})" x="0" y="0" width="80" height="98" fill="url(#${bg})"/>
-        <!-- Horizontal band (base ring, like reference) -->
-        <line clip-path="url(#${cid})" x1="0" y1="78" x2="80" y2="78" stroke="rgba(255,255,255,0.22)" stroke-width="1.5"/>
-        <!-- Bright left-edge highlight -->
-        <polygon clip-path="url(#${cid})" points="4,4 9,4 7.5,93 6,93" fill="rgba(255,255,255,0.28)"/>
-        <!-- Darker right-edge shadow -->
-        <polygon clip-path="url(#${cid})" points="71,4 76,4 63,93 61.5,93" fill="rgba(10,40,75,0.10)"/>
+        <!-- 3D depth gradient -->
+        <rect clip-path="url(#${cid})" x="0" y="0" width="80" height="104" fill="url(#${bg})"/>
+        <!-- Radial light source — upper-left highlight -->
+        <rect clip-path="url(#${cid})" x="0" y="0" width="80" height="104" fill="url(#${rg})"/>
+        <!-- Shoulder ring — top rim of the wide body cylinder -->
+        <ellipse cx="40" cy="45" rx="32" ry="5"
+          fill="rgba(195,222,242,0.25)" stroke="rgba(255,255,255,0.55)" stroke-width="1.5"/>
+        <!-- Inner ledge — neck base visible inside body -->
+        <ellipse clip-path="url(#${cid})" cx="40" cy="45" rx="16" ry="2.5"
+          fill="rgba(195,222,242,0.18)" stroke="rgba(255,255,255,0.32)" stroke-width="1.0"/>
+        <!-- Neck opening rim -->
+        <ellipse cx="40" cy="4" rx="16" ry="3"
+          fill="rgba(195,222,242,0.38)" stroke="rgba(255,255,255,0.60)" stroke-width="1.4"/>
+        <!-- Left edge highlights -->
+        <polygon clip-path="url(#${cid})" points="24,4 30,4 30,45 24,45"   fill="rgba(255,255,255,0.42)"/>
+        <polygon clip-path="url(#${cid})" points="8,45 14,45 14,97 8,97"   fill="rgba(255,255,255,0.38)"/>
+        <!-- Right edge shadows -->
+        <polygon clip-path="url(#${cid})" points="50,4 56,4 56,45 50,45"   fill="rgba(10,40,75,0.18)"/>
+        <polygon clip-path="url(#${cid})" points="66,45 72,45 72,97 66,97" fill="rgba(10,40,75,0.20)"/>
       </svg>
     </div>
   `;
