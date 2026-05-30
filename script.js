@@ -582,6 +582,8 @@ function render_pool_card(state) {
           <span class="sparkle s1">✨</span>
           <span class="sparkle s2">✨</span>
           <span class="sparkle s3">✨</span>
+          <span class="sparkle s4">✨</span>
+          <span class="sparkle s5">✨</span>
         </div>
       </div>
       <div class="summary_value">${state.pool_balance}</div>
