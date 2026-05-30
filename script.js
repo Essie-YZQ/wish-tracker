@@ -480,6 +480,7 @@ function render_summary(state) {
   summary_section.innerHTML = `
     <article class="summary_card summary_card_with_actions">
       <p class="summary_label">${person_a.name} Wishes</p>
+      ${render_crystal_glass(person_a.wish_balance)}
       <div class="summary_value">${person_a.wish_balance}</div>
       <p class="summary_meta">${person_a_weekly_earned}</p>
       ${render_balance_actions(person_a, person_b, state)}
@@ -487,6 +488,7 @@ function render_summary(state) {
     ${render_pool_card(state)}
     <article class="summary_card summary_card_with_actions">
       <p class="summary_label">${person_b.name} Wishes</p>
+      ${render_crystal_glass(person_b.wish_balance)}
       <div class="summary_value">${person_b.wish_balance}</div>
       <p class="summary_meta">${person_b_weekly_earned}</p>
       ${render_balance_actions(person_b, person_a, state)}
@@ -502,6 +504,31 @@ function get_weekly_earned_display(user) {
   return earned_icons ? `+ ${earned_icons} this week` : "+ this week";
 }
 
+function render_crystal_glass(wish_balance) {
+  const water_level = Math.min(100, (wish_balance / total_wishes) * 100);
+  return `
+    <div class="crystal_glass" aria-hidden="true">
+      <div class="glass_rim"></div>
+      <div class="glass_bowl_wrap">
+        <div class="glass_bowl_inner">
+          <div class="glass_water" style="height: ${water_level}%;"></div>
+          <div class="glass_snowflakes">
+            <span class="sf1">❄</span>
+            <span class="sf2">✦</span>
+            <span class="sf3">❄</span>
+            <span class="sf4">✦</span>
+          </div>
+          <div class="glass_shine"></div>
+        </div>
+      </div>
+      <div class="glass_stem_top"></div>
+      <div class="glass_stem_knob"></div>
+      <div class="glass_stem"></div>
+      <div class="glass_base"></div>
+    </div>
+  `;
+}
+
 function render_pool_card(state) {
   const max_pool = 30;
   const water_level = Math.min(100, (state.pool_balance / max_pool) * 100);
@@ -509,11 +536,24 @@ function render_pool_card(state) {
   return `
     <article class="summary_card summary_card_pool">
       <p class="summary_label">Wish Pool</p>
-      <div class="pool_tank" aria-hidden="true">
-        <div class="pool_rim"></div>
-        <div class="pool_bowl">
-          <div class="pool_water" style="height: ${water_level}%;"></div>
+      <div class="decanter" aria-hidden="true">
+        <div class="stopper_diamond"></div>
+        <div class="stopper_base"></div>
+        <div class="decanter_neck"></div>
+        <div class="decanter_body_wrap">
+          <div class="decanter_body_inner">
+            <div class="decanter_water" style="height: ${water_level}%;"></div>
+            <div class="decanter_snowflakes">
+              <span class="ds1">❄</span>
+              <span class="ds2">✦</span>
+              <span class="ds3">❄</span>
+              <span class="ds4">✦</span>
+              <span class="ds5">❄</span>
+            </div>
+            <div class="decanter_shine"></div>
+          </div>
         </div>
+        <div class="decanter_base"></div>
         <div class="pool_sparkles">
           <span class="sparkle s1">✨</span>
           <span class="sparkle s2">✨</span>

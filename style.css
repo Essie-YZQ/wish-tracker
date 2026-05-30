@@ -161,80 +161,130 @@ h2 {
   50%       { box-shadow: var(--shadow_color), 0 0 28px rgba(101, 178, 226, 0.42); }
 }
 
-.pool_tank {
+@keyframes crystal_twinkle {
+  0%, 100% { opacity: 0.15; transform: scale(0.75) rotate(0deg); }
+  50%       { opacity: 0.95; transform: scale(1.2) rotate(20deg); }
+}
+
+/* --- Crystal Decanter (Pool) --- */
+
+.decanter {
   position: relative;
-  width: 204px;
-  height: 164px;
-  margin: 8px 0 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 4px 0 12px;
 }
 
-.pool_rim {
-  display: none;
-}
-
-.pool_bowl {
-  position: absolute;
-  top: 20px;
-  right: 10px;
-  bottom: 0;
-  left: 10px;
-  overflow: hidden;
-  border: 2px solid rgba(128, 139, 149, 0.3);
-  border-top: none;
-  border-radius: 24% 24% 44% 44% / 16% 16% 78% 78%;
+.stopper_diamond {
+  width: 34px;
+  height: 32px;
   background:
-    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0) 24%),
-    linear-gradient(180deg, rgba(251, 253, 255, 0.92), rgba(236, 243, 248, 0.94));
-  box-shadow:
-    inset 0 0 0 5px rgba(255, 255, 255, 0.26),
-    inset 0 10px 18px rgba(255, 255, 255, 0.38),
-    0 16px 26px rgba(96, 130, 156, 0.08);
+    radial-gradient(circle at 32% 28%, rgba(255,255,255,0.62), transparent 50%),
+    repeating-linear-gradient(45deg,  rgba(255,255,255,0.07) 0px, rgba(255,255,255,0.07) 1px, transparent 1px, transparent 8px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,0.07) 0px, rgba(255,255,255,0.07) 1px, transparent 1px, transparent 8px),
+    linear-gradient(135deg, rgba(220,240,255,0.52), rgba(180,215,255,0.30));
+  border: 1.5px solid rgba(255,255,255,0.72);
+  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+  box-shadow: 0 2px 10px rgba(100,160,220,0.18);
 }
 
-.pool_bowl::before {
-  content: "";
-  position: absolute;
-  top: -2px;
-  left: 50%;
-  width: 68%;
-  height: 12px;
-  transform: translateX(-50%);
-  border-top: 2px solid rgba(128, 139, 149, 0.24);
-  border-radius: 999px;
-  pointer-events: none;
+.stopper_base {
+  width: 24px;
+  height: 9px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(220,240,255,0.52), rgba(200,225,255,0.28));
+  border: 1.5px solid rgba(255,255,255,0.66);
+  margin-top: -2px;
 }
 
-.pool_bowl::after {
-  content: "";
+.decanter_neck {
+  width: 26px;
+  height: 26px;
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.34) 0%,
+    rgba(220,240,255,0.14) 40%,
+    rgba(220,240,255,0.14) 60%,
+    rgba(255,255,255,0.28) 100%
+  );
+  border-left:  1.5px solid rgba(255,255,255,0.62);
+  border-right: 1.5px solid rgba(255,255,255,0.50);
+}
+
+.decanter_body_wrap {
+  width: 152px;
+  height: 98px;
+  clip-path: polygon(0% 100%, 100% 100%, 74% 0%, 26% 0%);
+  position: relative;
+  overflow: hidden;
+}
+
+.decanter_body_inner {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.24), transparent 20%, transparent 80%, rgba(255, 255, 255, 0.16));
-  pointer-events: none;
-}
-
-.pool_water {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(158, 220, 247, 0.84), rgba(101, 178, 226, 0.95));
-  box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.28),
-    0 -1px 0 rgba(210, 241, 255, 0.5);
+    radial-gradient(circle at 25% 20%, rgba(255,255,255,0.46) 0%, transparent 30%),
+    repeating-linear-gradient( 60deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 13px),
+    repeating-linear-gradient(-60deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 13px),
+    repeating-linear-gradient(  0deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 13px),
+    linear-gradient(170deg, rgba(220,240,255,0.28), rgba(180,215,255,0.14));
 }
 
-.pool_water::after {
+.decanter_water {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: linear-gradient(180deg, rgba(158,220,247,0.76), rgba(90,170,220,0.92));
+  transition: height 0.6s ease;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.decanter_water::after {
   content: "";
   position: absolute;
-  top: 0;
-  left: -60%;
-  width: 40%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  top: 0; left: -60%;
+  width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.42), transparent);
   animation: water_shimmer 2.8s ease-in-out infinite;
+}
+
+.decanter_snowflakes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.decanter_snowflakes span {
+  position: absolute;
+  color: rgba(255,255,255,0.68);
+  animation: crystal_twinkle 2.5s ease-in-out infinite;
+}
+
+.decanter_snowflakes .ds1 { font-size: 1rem;   top: 13%; left: 17%;  animation-delay: 0s; }
+.decanter_snowflakes .ds2 { font-size: 0.8rem;  top: 20%; right: 19%; animation-delay: 0.9s; }
+.decanter_snowflakes .ds3 { font-size: 0.7rem;  top: 7%;  left: 47%;  animation-delay: 1.6s; }
+.decanter_snowflakes .ds4 { font-size: 0.85rem; top: 38%; left: 27%;  animation-delay: 2.2s; }
+.decanter_snowflakes .ds5 { font-size: 0.75rem; top: 29%; right: 25%; animation-delay: 0.4s; }
+
+.decanter_shine {
+  position: absolute;
+  top: 6%; left: 9%;
+  width: 9%; height: 72%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.40), transparent);
+  border-radius: 0 0 50% 50%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.decanter_base {
+  width: 157px;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(220,240,255,0.44), rgba(200,225,255,0.22));
+  border: 1.5px solid rgba(255,255,255,0.62);
+  margin-top: -1px;
+  box-shadow: 0 4px 14px rgba(100,160,220,0.14);
 }
 
 .pool_sparkles {
@@ -245,14 +295,144 @@ h2 {
 
 .sparkle {
   position: absolute;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   animation: sparkle_float 2.6s ease-in-out infinite;
   opacity: 0;
 }
 
-.sparkle.s1 { bottom: 52%; left: 10%; animation-delay: 0s; }
-.sparkle.s2 { bottom: 42%; right: 12%; animation-delay: 1s; }
-.sparkle.s3 { bottom: 62%; left: 44%; animation-delay: 1.9s; }
+.sparkle.s1 { top: 4%;  left: 6%;  animation-delay: 0s; }
+.sparkle.s2 { top: 8%;  right: 8%; animation-delay: 1s; }
+.sparkle.s3 { top: 1%;  left: 43%; animation-delay: 1.9s; }
+
+/* --- Crystal Martini Glass (S/KK) --- */
+
+.crystal_glass {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 6px 0 8px;
+}
+
+.glass_rim {
+  width: 78px;
+  height: 5px;
+  border-radius: 50%;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(255,255,255,0.52) 15%,
+    rgba(255,255,255,0.92) 50%,
+    rgba(255,255,255,0.52) 85%,
+    transparent 100%
+  );
+  margin-bottom: -1px;
+  position: relative;
+  z-index: 3;
+}
+
+.glass_bowl_wrap {
+  width: 78px;
+  height: 70px;
+  clip-path: polygon(0% 0%, 100% 0%, 54% 100%, 46% 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass_bowl_inner {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 26% 16%, rgba(255,255,255,0.50) 0%, transparent 32%),
+    repeating-linear-gradient( 45deg, rgba(255,255,255,0.058) 0px, rgba(255,255,255,0.058) 1px, transparent 1px, transparent 10px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,0.058) 0px, rgba(255,255,255,0.058) 1px, transparent 1px, transparent 10px),
+    linear-gradient(160deg, rgba(220,240,255,0.27), rgba(200,225,255,0.12));
+}
+
+.glass_water {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: linear-gradient(180deg, rgba(158,220,247,0.74), rgba(90,170,220,0.90));
+  transition: height 0.6s ease;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.glass_water::after {
+  content: "";
+  position: absolute;
+  top: 0; left: -60%;
+  width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.36), transparent);
+  animation: water_shimmer 3.2s ease-in-out infinite;
+}
+
+.glass_snowflakes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.glass_snowflakes span {
+  position: absolute;
+  color: rgba(255,255,255,0.70);
+  animation: crystal_twinkle 2.8s ease-in-out infinite;
+}
+
+.glass_snowflakes .sf1 { font-size: 0.70rem; top: 10%; left: 16%;  animation-delay: 0s; }
+.glass_snowflakes .sf2 { font-size: 0.60rem; top: 18%; right: 17%; animation-delay: 0.8s; }
+.glass_snowflakes .sf3 { font-size: 0.55rem; top:  6%; left: 45%;  animation-delay: 1.5s; }
+.glass_snowflakes .sf4 { font-size: 0.65rem; top: 32%; left: 27%;  animation-delay: 2.1s; }
+
+.glass_shine {
+  position: absolute;
+  top: 5%; left: 8%;
+  width: 10%; height: 68%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.40), transparent);
+  border-radius: 0 0 50% 50%;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.glass_stem_top {
+  width: 13px;
+  height: 9px;
+  border-radius: 50% 50% 0 0;
+  background: linear-gradient(180deg, rgba(220,240,255,0.56), rgba(200,225,255,0.30));
+  border: 1.5px solid rgba(255,255,255,0.62);
+  border-bottom: none;
+  margin-top: -1px;
+  z-index: 2;
+}
+
+.glass_stem_knob {
+  width: 17px;
+  height: 13px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 33% 33%, rgba(255,255,255,0.58), rgba(200,230,255,0.22));
+  border: 1.5px solid rgba(255,255,255,0.66);
+  box-shadow: 0 2px 7px rgba(100,160,220,0.15);
+}
+
+.glass_stem {
+  width: 5px;
+  height: 26px;
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.54),
+    rgba(200,230,255,0.32),
+    rgba(255,255,255,0.50)
+  );
+  border-left:  1px solid rgba(255,255,255,0.50);
+  border-right: 1px solid rgba(255,255,255,0.38);
+}
+
+.glass_base {
+  width: 54px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(220,240,255,0.50), rgba(200,225,255,0.25));
+  border: 1.5px solid rgba(255,255,255,0.64);
+  box-shadow: 0 3px 10px rgba(100,160,220,0.13);
+}
 
 .balance_actions {
   display: flex;
