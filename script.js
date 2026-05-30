@@ -478,20 +478,28 @@ function render_summary(state) {
   const person_b_weekly_earned = get_weekly_earned_display(person_b);
 
   summary_section.innerHTML = `
-    <article class="summary_card summary_card_with_actions">
-      <p class="summary_label">${person_a.name} Wishes</p>
+    <article class="summary_card user_card">
+      <div class="user_card_content">
+        <p class="summary_label">${person_a.name} Wishes</p>
+        <div class="user_card_row">
+          <div class="summary_value">${person_a.wish_balance}</div>
+          <p class="summary_meta">${person_a_weekly_earned}</p>
+        </div>
+        ${render_balance_actions(person_a, person_b, state)}
+      </div>
       ${render_crystal_glass(person_a.user_id, person_a.wish_balance)}
-      <div class="summary_value">${person_a.wish_balance}</div>
-      <p class="summary_meta">${person_a_weekly_earned}</p>
-      ${render_balance_actions(person_a, person_b, state)}
     </article>
     ${render_pool_card(state)}
-    <article class="summary_card summary_card_with_actions">
-      <p class="summary_label">${person_b.name} Wishes</p>
+    <article class="summary_card user_card user_card_reverse">
+      <div class="user_card_content">
+        <p class="summary_label">${person_b.name} Wishes</p>
+        <div class="user_card_row">
+          <div class="summary_value">${person_b.wish_balance}</div>
+          <p class="summary_meta">${person_b_weekly_earned}</p>
+        </div>
+        ${render_balance_actions(person_b, person_a, state)}
+      </div>
       ${render_crystal_glass(person_b.user_id, person_b.wish_balance)}
-      <div class="summary_value">${person_b.wish_balance}</div>
-      <p class="summary_meta">${person_b_weekly_earned}</p>
-      ${render_balance_actions(person_b, person_a, state)}
     </article>
   `;
 }
@@ -506,46 +514,63 @@ function get_weekly_earned_display(user) {
 
 function render_crystal_glass(user_id, wish_balance) {
   const water_pct = Math.min(100, (wish_balance / total_wishes) * 100);
-  const water_y   = Math.round(158 * (1 - water_pct / 100));
+  // Interior fills from y=5 (rim) to y=92 (base), height=87
+  const water_y = Math.round(5 + 87 * (1 - water_pct / 100));
   const cid = `vc_${user_id}`;
   const wg  = `wg_${user_id}`;
-  // Vase path: wavy rim → concave waist → straight body → wide base
-  const vp = "M 10,5 C 18,2 22,8 30,4 C 38,1 42,8 50,4 C 58,1 62,7 70,5 C 76,5 78,10 76,20 L 76,28 C 74,33 64,37 58,43 C 65,55 65,82 63,115 L 63,146 C 64,152 70,158 70,163 L 10,163 C 10,158 16,152 17,146 L 17,115 C 15,82 15,55 22,43 C 16,33 6,28 4,28 L 4,20 C 2,10 4,5 10,5 Z";
+  const bg  = `bg_${user_id}`;
+  // Cone/funnel vase: wide flat rim at top, tapers to narrower flat base
+  const vp = "M 4,4 L 76,4 C 74,52 67,84 63,93 L 17,93 C 13,84 6,52 4,4 Z";
+
+  // 13 converging ribs: top x=4..76, bottom x=17..63
+  const n = 12;
+  const ribs = Array.from({length: n + 1}, (_, i) => {
+    const tx = Math.round(4 + i * 72 / n);
+    const bx = Math.round(17 + i * 46 / n);
+    return `<line x1="${tx}" y1="4" x2="${bx}" y2="93" stroke="rgba(255,255,255,0.28)" stroke-width="2"/>`;
+  }).join("");
+
+  const valleys = Array.from({length: n}, (_, i) => {
+    const tx = Math.round(4 + (i + 0.5) * 72 / n);
+    const bx = Math.round(17 + (i + 0.5) * 46 / n);
+    return `<line x1="${tx}" y1="4" x2="${bx}" y2="93" stroke="rgba(15,45,80,0.07)" stroke-width="1.2"/>`;
+  }).join("");
 
   return `
     <div class="crystal_vase" aria-hidden="true">
-      <svg class="vase_svg" viewBox="0 0 80 168" xmlns="http://www.w3.org/2000/svg">
+      <svg class="vase_svg" viewBox="0 0 80 98" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <clipPath id="${cid}"><path d="${vp}"/></clipPath>
           <linearGradient id="${wg}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="rgba(155,218,245,0.66)"/>
-            <stop offset="100%" stop-color="rgba(82,158,210,0.86)"/>
+            <stop offset="0%"   stop-color="rgba(155,218,245,0.64)"/>
+            <stop offset="100%" stop-color="rgba(80,155,208,0.84)"/>
+          </linearGradient>
+          <linearGradient id="${bg}" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stop-color="rgba(255,255,255,0.40)"/>
+            <stop offset="16%"  stop-color="rgba(255,255,255,0.10)"/>
+            <stop offset="50%"  stop-color="rgba(255,255,255,0.01)"/>
+            <stop offset="84%"  stop-color="rgba(10,40,75,0.04)"/>
+            <stop offset="100%" stop-color="rgba(10,40,75,0.12)"/>
           </linearGradient>
         </defs>
-        <!-- Water -->
-        <rect clip-path="url(#${cid})" x="0" y="${water_y}" width="80" height="168" fill="url(#${wg})"/>
-        <!-- Water shimmer (SVG animate keeps it clipped correctly) -->
-        <rect clip-path="url(#${cid})" x="-26" y="${water_y}" width="20" height="168" fill="rgba(255,255,255,0.25)">
-          <animateTransform attributeName="transform" type="translate" from="0 0" to="112 0" dur="3.2s" repeatCount="indefinite"/>
+        <!-- Water fill -->
+        <rect clip-path="url(#${cid})" x="0" y="${water_y}" width="80" height="98" fill="url(#${wg})"/>
+        <!-- Water shimmer -->
+        <rect clip-path="url(#${cid})" x="-22" y="${water_y}" width="18" height="98" fill="rgba(255,255,255,0.24)">
+          <animateTransform attributeName="transform" type="translate" from="0 0" to="106 0" dur="3.2s" repeatCount="indefinite"/>
         </rect>
         <!-- Glass body -->
-        <path d="${vp}" fill="rgba(145,182,220,0.28)" stroke="rgba(255,255,255,0.46)" stroke-width="1.2"/>
-        <!-- Vertical ribs -->
-        <g clip-path="url(#${cid})" stroke="rgba(255,255,255,0.13)" stroke-width="0.9" fill="none">
-          <line x1="22" y1="0" x2="22" y2="168"/>
-          <line x1="29" y1="0" x2="29" y2="168"/>
-          <line x1="36" y1="0" x2="36" y2="168"/>
-          <line x1="40" y1="0" x2="40" y2="168"/>
-          <line x1="44" y1="0" x2="44" y2="168"/>
-          <line x1="51" y1="0" x2="51" y2="168"/>
-          <line x1="58" y1="0" x2="58" y2="168"/>
-        </g>
-        <!-- Left edge shine -->
-        <path d="M 11,24 C 12,40 12,78 13,128 L 15,128 C 15,78 14,40 13,24 Z" fill="rgba(255,255,255,0.22)" clip-path="url(#${cid})"/>
-        <!-- Snowflakes -->
-        <text x="16" y="72" font-size="7" fill="rgba(255,255,255,0.40)" font-family="serif" clip-path="url(#${cid})">❄</text>
-        <text x="52" y="54" font-size="5.5" fill="rgba(255,255,255,0.35)" font-family="serif" clip-path="url(#${cid})">✦</text>
-        <text x="36" y="36" font-size="5" fill="rgba(255,255,255,0.30)" font-family="serif" clip-path="url(#${cid})">❄</text>
+        <path d="${vp}" fill="rgba(140,178,216,0.26)" stroke="rgba(255,255,255,0.42)" stroke-width="1.4"/>
+        <!-- Converging ribs -->
+        <g clip-path="url(#${cid})" fill="none">${ribs}${valleys}</g>
+        <!-- Left-to-right 3D gradient overlay -->
+        <rect clip-path="url(#${cid})" x="0" y="0" width="80" height="98" fill="url(#${bg})"/>
+        <!-- Horizontal band (base ring, like reference) -->
+        <line clip-path="url(#${cid})" x1="0" y1="78" x2="80" y2="78" stroke="rgba(255,255,255,0.22)" stroke-width="1.5"/>
+        <!-- Bright left-edge highlight -->
+        <polygon clip-path="url(#${cid})" points="4,4 9,4 7.5,93 6,93" fill="rgba(255,255,255,0.28)"/>
+        <!-- Darker right-edge shadow -->
+        <polygon clip-path="url(#${cid})" points="71,4 76,4 63,93 61.5,93" fill="rgba(10,40,75,0.10)"/>
       </svg>
     </div>
   `;

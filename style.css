@@ -515,17 +515,62 @@ h2 {
 }
 
 .crystal_vase {
-  margin: 4px 0 8px;
-  display: flex;
-  justify-content: center;
+  flex-shrink: 0;
 }
 
 .vase_svg {
-  width: 72px;
+  width: 68px;
   height: auto;
   filter:
-    drop-shadow(0 5px 16px rgba(120,170,218,0.20))
-    drop-shadow(0 0 4px rgba(255,255,255,0.12));
+    drop-shadow(0 5px 18px rgba(100,155,210,0.24))
+    drop-shadow(0 0 5px rgba(255,255,255,0.14));
+}
+
+/* --- User card layout (S / KK) --- */
+
+.user_card {
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.user_card_reverse {
+  flex-direction: row-reverse !important;
+}
+
+.user_card_content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user_card_row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.user_card_row .summary_value {
+  font-size: clamp(1.6rem, 2.5vw, 2.1rem);
+}
+
+.user_card_row .summary_meta {
+  font-size: 0.82rem;
+}
+
+.user_card .balance_actions {
+  flex-wrap: nowrap;
+  gap: 5px;
+}
+
+.user_card .mini_action_button {
+  padding: 5px 7px;
+  font-size: 0.70rem;
+  flex: 1;
+  white-space: nowrap;
 }
 
 .balance_actions {
