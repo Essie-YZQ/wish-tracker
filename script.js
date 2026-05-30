@@ -537,7 +537,14 @@ function render_pool_card(state) {
     <article class="summary_card summary_card_pool">
       <p class="summary_label">Wish Pool</p>
       <div class="decanter" aria-hidden="true">
-        <div class="stopper_diamond"></div>
+        <div class="stopper_wrap">
+          <span class="cap_flake cf1">❄</span>
+          <span class="cap_flake cf2">❄</span>
+          <span class="cap_flake cf3">✦</span>
+          <span class="cap_flake cf4">✦</span>
+          <span class="cap_flake cf5">❄</span>
+          <div class="stopper_diamond"></div>
+        </div>
         <div class="stopper_base"></div>
         <div class="decanter_neck"></div>
         <div class="decanter_body_wrap">

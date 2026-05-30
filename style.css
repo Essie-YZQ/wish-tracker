@@ -1,7 +1,7 @@
 :root {
   --bg_color: #1f4a3c;
-  --panel_color: rgba(255, 255, 251, 0.58);
-  --panel_strong: rgba(255, 255, 255, 0.68);
+  --panel_color: rgba(200, 155, 175, 0.72);
+  --panel_strong: rgba(208, 163, 182, 0.82);
   --ink_color: #233124;
   --muted_color: #647560;
   --line_color: rgba(88, 114, 82, 0.14);
@@ -114,8 +114,8 @@ h2 {
 .summary_card {
   padding: 22px;
   border-radius: var(--radius_large);
-  background: linear-gradient(180deg, rgba(255, 255, 251, 0.94), rgba(245, 249, 239, 0.9));
-  border: 1px solid rgba(255, 255, 255, 0.66);
+  background: linear-gradient(160deg, rgba(215, 170, 190, 0.92), rgba(195, 148, 170, 0.90));
+  border: 1px solid rgba(230, 195, 210, 0.65);
   box-shadow: var(--shadow_color);
 }
 
@@ -130,6 +130,7 @@ h2 {
   flex-direction: column;
   align-items: center;
   text-align: center;
+  justify-content: space-between;
   animation: pool_glow 3.5s ease-in-out infinite;
 }
 
@@ -173,8 +174,30 @@ h2 {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 4px 0 12px;
+  flex: 1;
+  margin: 4px 0 4px;
+  justify-content: center;
 }
+
+.stopper_wrap {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.cap_flake {
+  position: absolute;
+  color: rgba(255,255,255,0.88);
+  animation: crystal_twinkle 2.2s ease-in-out infinite;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.cap_flake.cf1 { font-size: 0.55rem; top: -2px;  left: -10px; animation-delay: 0s; }
+.cap_flake.cf2 { font-size: 0.50rem; top: -4px;  right: -10px; animation-delay: 0.65s; }
+.cap_flake.cf3 { font-size: 0.45rem; top: -8px;  left: 50%; transform: translateX(-50%); animation-delay: 1.3s; }
+.cap_flake.cf4 { font-size: 0.42rem; top:  2px;  left: -14px; animation-delay: 1.9s; }
+.cap_flake.cf5 { font-size: 0.42rem; top:  2px;  right: -14px; animation-delay: 0.95s; }
 
 .stopper_diamond {
   width: 34px;
@@ -199,8 +222,8 @@ h2 {
 }
 
 .decanter_neck {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 34px;
   background: linear-gradient(90deg,
     rgba(255,255,255,0.34) 0%,
     rgba(220,240,255,0.14) 40%,
@@ -212,8 +235,8 @@ h2 {
 }
 
 .decanter_body_wrap {
-  width: 152px;
-  height: 98px;
+  width: 162px;
+  height: 168px;
   clip-path: polygon(0% 100%, 100% 100%, 74% 0%, 26% 0%);
   position: relative;
   overflow: hidden;
@@ -278,7 +301,7 @@ h2 {
 }
 
 .decanter_base {
-  width: 157px;
+  width: 167px;
   height: 10px;
   border-radius: 50%;
   background: linear-gradient(180deg, rgba(220,240,255,0.44), rgba(200,225,255,0.22));
