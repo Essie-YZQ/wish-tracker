@@ -1301,6 +1301,25 @@ function render_pool_card(state) {
           <span class="sparkle s4">✨</span>
           <span class="sparkle s5">✨</span>
         </div>
+        <svg class='decanter_large_snowflake' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'>
+          <g stroke-linecap='round' fill='none'>
+            <g id='snw_arm_b'>
+              <line x1='30' y1='30' x2='30' y2='4'  stroke='rgba(255,255,255,0.92)' stroke-width='2.2'/>
+              <line x1='30' y1='9'  x2='21' y2='3'  stroke='rgba(215,235,255,0.85)' stroke-width='1.5'/>
+              <line x1='30' y1='9'  x2='39' y2='3'  stroke='rgba(215,235,255,0.85)' stroke-width='1.5'/>
+              <line x1='30' y1='15' x2='23' y2='9'  stroke='rgba(210,232,255,0.82)' stroke-width='1.4'/>
+              <line x1='30' y1='15' x2='37' y2='9'  stroke='rgba(210,232,255,0.82)' stroke-width='1.4'/>
+              <line x1='30' y1='21' x2='24' y2='16' stroke='rgba(205,228,255,0.78)' stroke-width='1.2'/>
+              <line x1='30' y1='21' x2='36' y2='16' stroke='rgba(205,228,255,0.78)' stroke-width='1.2'/>
+            </g>
+            <use href='#snw_arm_b' transform='rotate(60, 30, 30)'/>
+            <use href='#snw_arm_b' transform='rotate(120, 30, 30)'/>
+            <use href='#snw_arm_b' transform='rotate(180, 30, 30)'/>
+            <use href='#snw_arm_b' transform='rotate(240, 30, 30)'/>
+            <use href='#snw_arm_b' transform='rotate(300, 30, 30)'/>
+            <circle cx='30' cy='30' r='3.2' fill='rgba(220,240,255,0.90)' stroke='rgba(255,255,255,0.95)' stroke-width='1.5'/>
+          </g>
+        </svg>
       </div>
       </div>
       <div class="summary_value">${state.pool_balance}</div>

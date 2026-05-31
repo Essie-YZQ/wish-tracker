@@ -216,6 +216,13 @@ h2 {
   50%       { box-shadow: var(--shadow_color), 0 0 28px rgba(101, 178, 226, 0.42); }
 }
 
+@keyframes snowflake_breathe {
+  0%, 100% { opacity: 0;    transform: scale(0.15) rotate(0deg); }
+  20%       { opacity: 0.12; transform: scale(0.5)  rotate(8deg); }
+  50%       { opacity: 0.65; transform: scale(1.0)  rotate(18deg); }
+  80%       { opacity: 0.12; transform: scale(0.5)  rotate(8deg); }
+}
+
 @keyframes crystal_twinkle {
   0%, 100% { opacity: 0.15; transform: scale(0.75) rotate(0deg); }
   50%       { opacity: 0.95; transform: scale(1.2) rotate(20deg); }
@@ -355,6 +362,19 @@ h2 {
 .decanter_snowflakes .ds3 { font-size: 0.7rem;  top: 7%;  left: 47%;  animation-delay: 1.6s; }
 .decanter_snowflakes .ds4 { font-size: 0.85rem; top: 38%; left: 27%;  animation-delay: 2.2s; }
 .decanter_snowflakes .ds5 { font-size: 0.75rem; top: 29%; right: 25%; animation-delay: 0.4s; }
+
+.decanter_large_snowflake {
+  position: absolute;
+  width: 68px;
+  height: 68px;
+  bottom: 30px;
+  left: -25px;
+  pointer-events: none;
+  z-index: 6;
+  animation: snowflake_breathe 6s ease-in-out infinite -3s;
+  filter: drop-shadow(0 0 8px rgba(180,220,255,0.7)) drop-shadow(0 0 4px rgba(255,255,255,0.45));
+  overflow: visible;
+}
 
 .decanter_shine {
   position: absolute;
