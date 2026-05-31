@@ -1249,6 +1249,7 @@ function render_pool_card(state) {
   return `
     <article class="summary_card summary_card_pool">
       <p class="summary_label">Wish Pool</p>
+      <div class="pool_vessel_area">
       <div class="decanter" aria-hidden="true">
         <div class="stopper_wrap">
           <span class="cap_flake cf1">✦</span>
@@ -1299,7 +1300,9 @@ function render_pool_card(state) {
           <span class="sparkle s5">✨</span>
         </div>
       </div>
+      </div>
       <div class="summary_value">${state.pool_balance}</div>
+      <div class="pool_bottom_spacer"></div>
     </article>
   `;
 }

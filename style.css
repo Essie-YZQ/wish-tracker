@@ -130,13 +130,23 @@ h2 {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  justify-content: space-between;
+  gap: 8px;
   animation: pool_glow 3.5s ease-in-out infinite;
+}
+
+.pool_vessel_area {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.pool_bottom_spacer {
+  height: 120px;
 }
 
 .summary_card_pool .summary_value {
   font-size: clamp(1.6rem, 2.5vw, 2.1rem);
-  transform: translateY(-42px);
 }
 
 .summary_label {
@@ -219,7 +229,7 @@ h2 {
   flex-direction: column;
   align-items: center;
   flex: 0 0 auto;
-  margin: 104px 0 4px;
+  margin: 0 0 4px;
   justify-content: flex-start;
 }
 
