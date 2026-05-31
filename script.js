@@ -54,8 +54,17 @@ async function loadFromFirebase() {
       state.users[1].weekly_source_icons = data.kkWeeklySources;
     }
 
+    if (Array.isArray(data.sVaseFlowers)) {
+      state.users[0].vase_flowers = data.sVaseFlowers;
+    }
+
+    if (Array.isArray(data.kkVaseFlowers)) {
+      state.users[1].vase_flowers = data.kkVaseFlowers;
+    }
+
     applyHabitStatus(state.users[0].habits, data.sHabitStatus);
     applyHabitStatus(state.users[1].habits, data.kkHabitStatus);
+    state.users.forEach(sync_vase_flowers_to_balance);
 
     save_state(state);
     render_app();
@@ -98,8 +107,17 @@ function subscribeToFirebaseBalances() {
       state.users[1].weekly_source_icons = data.kkWeeklySources;
     }
 
+    if (Array.isArray(data.sVaseFlowers)) {
+      state.users[0].vase_flowers = data.sVaseFlowers;
+    }
+
+    if (Array.isArray(data.kkVaseFlowers)) {
+      state.users[1].vase_flowers = data.kkVaseFlowers;
+    }
+
     applyHabitStatus(state.users[0].habits, data.sHabitStatus);
     applyHabitStatus(state.users[1].habits, data.kkHabitStatus);
+    state.users.forEach(sync_vase_flowers_to_balance);
 
     save_state(state);
     render_app();
@@ -129,6 +147,16 @@ async function getLatestStateFromFirebase() {
     if (typeof data.poolBalance === "number") {
       state.pool_balance = data.poolBalance;
     }
+
+    if (Array.isArray(data.sVaseFlowers)) {
+      state.users[0].vase_flowers = data.sVaseFlowers;
+    }
+
+    if (Array.isArray(data.kkVaseFlowers)) {
+      state.users[1].vase_flowers = data.kkVaseFlowers;
+    }
+
+    state.users.forEach(sync_vase_flowers_to_balance);
   }
 
   return state;
@@ -158,7 +186,9 @@ async function saveBalancesToFirebase(state, habit_user_id = null) {
     kkBalance: state.users[1].wish_balance,
     poolBalance: state.pool_balance,
     sWeeklySources: sSources,
-    kkWeeklySources: kkSources
+    kkWeeklySources: kkSources,
+    sVaseFlowers: state.users[0].vase_flowers || [],
+    kkVaseFlowers: state.users[1].vase_flowers || []
   };
 
   if (habit_user_id) {
@@ -339,11 +369,21 @@ function bind_events() {
 function handle_click(event) {
   const toggle_button = event.target.closest("[data_action='toggle_day'], [data-action='toggle_day']");
   const action_button = event.target.closest("[data_action='wish_action'], [data-action='wish_action']");
-  const flower_button = event.target.closest("[data-action='pick_flower']");
-  const reset_button  = event.target.closest("#reset_demo_button");
+  const flower_button  = event.target.closest("[data-action='pick_flower']");
+  const clear_button   = event.target.closest("[data-action='clear_vase']");
+  const shuffle_button = event.target.closest("[data-action='shuffle_vase']");
+  const reset_button   = event.target.closest("#reset_demo_button");
 
   if (flower_button) {
     pick_flower(flower_button.dataset.userId, flower_button.dataset.flowerId);
+    return;
+  }
+  if (clear_button) {
+    clear_vase(clear_button.dataset.userId);
+    return;
+  }
+  if (shuffle_button) {
+    shuffle_vase(shuffle_button.dataset.userId);
     return;
   }
 
@@ -372,7 +412,30 @@ function handle_click(event) {
   }
 }
 
-function pick_flower(user_id, flower_id) {
+async function clear_vase(user_id) {
+  const state = get_state();
+  const user  = state.users.find(u => u.user_id === user_id);
+  if (!user) return;
+  user.vase_flowers = [];
+  save_state(state);
+  render_summary(state);
+  await saveBalancesToFirebase(state);
+}
+
+async function shuffle_vase(user_id) {
+  const state = get_state();
+  const user  = state.users.find(u => u.user_id === user_id);
+  if (!user || user.wish_balance === 0) return;
+  const count = user.wish_balance;
+  user.vase_flowers = Array.from({ length: count }, () =>
+    FLOWER_LIST[Math.floor(Math.random() * FLOWER_LIST.length)]
+  );
+  save_state(state);
+  render_summary(state);
+  await saveBalancesToFirebase(state);
+}
+
+async function pick_flower(user_id, flower_id) {
   const state = get_state();
   const user  = state.users.find(u => u.user_id === user_id);
   if (!user) return;
@@ -381,6 +444,27 @@ function pick_flower(user_id, flower_id) {
   user.vase_flowers = [...flowers, flower_id];
   save_state(state);
   render_summary(state);
+  await saveBalancesToFirebase(state);
+}
+
+function sync_vase_flowers_to_balance(user) {
+  if (!user) return [];
+  const max_count = Math.max(0, Number(user.wish_balance) || 0);
+  const flowers = Array.isArray(user.vase_flowers) ? user.vase_flowers : [];
+  if (flowers.length <= max_count) {
+    user.vase_flowers = flowers;
+    return [];
+  }
+  const removed_flowers = flowers.slice(max_count);
+  user.vase_flowers = flowers.slice(0, max_count);
+  return removed_flowers;
+}
+
+function restore_vase_flowers(user, flowers) {
+  if (!user || !Array.isArray(flowers) || flowers.length === 0) return;
+  const current_flowers = Array.isArray(user.vase_flowers) ? user.vase_flowers : [];
+  user.vase_flowers = current_flowers.concat(flowers);
+  sync_vase_flowers_to_balance(user);
 }
 
 function get_state() {
@@ -457,6 +541,8 @@ function normalize_balances(state) {
     user.total_earned = Math.max(0, Number(user.total_earned) || 0);
     user.total_spent = Math.max(0, Number(user.total_spent) || 0);
     user.weekly_transfer_icons = Array.isArray(user.weekly_transfer_icons) ? user.weekly_transfer_icons : [];
+    user.vase_flowers = Array.isArray(user.vase_flowers) ? user.vase_flowers : [];
+    sync_vase_flowers_to_balance(user);
   });
 
   const total_user_balance = state.users.reduce((sum, user) => sum + user.wish_balance, 0);
@@ -502,8 +588,10 @@ function render_summary(state) {
     <article class="summary_card user_card">
       <p class="summary_label">${person_a.name} Wishes</p>
       <div class="card_vase_area">
-        ${render_flower_picker(person_a.user_id, person_a.wish_balance, a_flowers)}
-        ${render_crystal_glass(person_a.user_id, person_a.wish_balance, a_flowers)}
+        <div class="card_vase_top">
+          ${render_flower_picker(person_a.user_id, person_a.wish_balance, a_flowers)}
+          ${render_crystal_glass(person_a.user_id, person_a.wish_balance, a_flowers)}
+        </div>
       </div>
       <div class="user_card_row">
         <div class="summary_value">${person_a.wish_balance}</div>
@@ -679,7 +767,7 @@ const FLOWER_SVG = {
   lily_valley: `<svg viewBox="0 0 36 60" xmlns="http://www.w3.org/2000/svg">
     <path d="M10,56 C6,48 5,38 8,28 C10,26 13,27 14,30 C12,38 11,48 10,56" fill="#5a9055" stroke="#3d6e3a" stroke-width="0.7"/>
     <path d="M26,56 C30,48 31,38 28,28 C26,26 23,27 22,30 C24,38 25,48 26,56" fill="#4a8047" stroke="#3d6e3a" stroke-width="0.7"/>
-    <line x1="18" y1="50" x2="18" y2="22" stroke="#4a7c4e" stroke-width="1.2"/>
+    <line x1="18" y1="56" x2="18" y2="22" stroke="#4a7c4e" stroke-width="1.2"/>
     <path d="M18,22 C20,16 24,12 26,8"  stroke="#4a7c4e" stroke-width="1.1" fill="none"/>
     <path d="M18,22 C16,16 12,12 10,8"  stroke="#4a7c4e" stroke-width="1"   fill="none"/>
     <path d="M25,9  C22,8  21,12 22,15 C23,17 26,17 27,14 C28,11 27,8  25,9  Z" fill="white" stroke="#90b090" stroke-width="0.7"/>
@@ -943,299 +1031,6 @@ const FLOWER_SVG = {
     <circle cx="18" cy="30" r="1.1" fill="#e84040" opacity="0.55"/>
   </svg>`,
 };
-    <circle cx="18" cy="16" r="9"   fill="#f0b090" stroke="#c07060" stroke-width="0.8"/>
-    <circle cx="18" cy="8"  r="6"   fill="#f0a880" stroke="#c06858" stroke-width="0.7"/>
-    <circle cx="24" cy="11" r="6"   fill="#e89870" stroke="#c06858" stroke-width="0.7"/>
-    <circle cx="24" cy="21" r="6"   fill="#f0b090" stroke="#c07060" stroke-width="0.7"/>
-    <circle cx="12" cy="11" r="6"   fill="#f0a880" stroke="#c06858" stroke-width="0.7"/>
-    <circle cx="12" cy="21" r="6"   fill="#e89870" stroke="#c07060" stroke-width="0.7"/>
-    <circle cx="18" cy="24" r="5.5" fill="#f0b090" stroke="#c07060" stroke-width="0.7"/>
-    <path d="M13,27 C13,24 18,23 23,27" stroke="#3d6e3a" stroke-width="1" fill="none"/>`),
-
-  snowdrop: _svg(`<line x1="18" y1="58" x2="18" y2="28" stroke="#3d6e3a" stroke-width="1.4"/>
-    <path d="M18,38 C9,32 7,23 12,18 C14,23 16,31 18,38" fill="#5a9055" stroke="#3d6e3a" stroke-width="0.4"/>`, `
-    <path d="M18,28 C20,22 22,16 21,10" stroke="#3d6e3a" stroke-width="1.2" fill="none"/>
-    <path d="M17,10 C13,10 12,15 13,19 C14,23 22,23 23,19 C24,15 23,10 19,10 Z" fill="white" stroke="#8aaa88" stroke-width="0.8"/>
-    <path d="M17,10 C15,10 14,14 15,17 C16,19 20,19 21,17 C22,14 21,10 19,10 Z" fill="#eef7ee"/>
-    <path d="M16,10 C16,7 18,6 20,8 C20,9 18,10 16,10" fill="#4a8040"/>`),
-
-  iris: _svg(_SL, `
-    <path d="M18,25 C14,21 11,14 13,7  C15,11 17,18 18,25" fill="#8272be" stroke="#6050a0" stroke-width="0.8"/>
-    <path d="M18,25 C22,21 25,14 23,7  C21,11 19,18 18,25" fill="#7060ab" stroke="#6050a0" stroke-width="0.8"/>
-    <path d="M18,25 C17,18 18,11 18,5  C19,11 19,18 18,25" fill="#9888cc" stroke="#6050a0" stroke-width="0.5"/>
-    <path d="M18,25 C13,23 7,21 4,16   C8,18 13,21 18,25" fill="#8272be" stroke="#6050a0" stroke-width="0.8"/>
-    <path d="M18,25 C23,23 29,21 32,16 C28,18 23,21 18,25" fill="#7060ab" stroke="#6050a0" stroke-width="0.8"/>
-    <path d="M18,25 C17,28 16,31 14,30 C15,28 16,26 18,25" fill="#8272be" stroke="#6050a0" stroke-width="0.6"/>
-    <path d="M18,25 C19,28 20,31 22,30 C21,28 20,26 18,25" fill="#7060ab" stroke="#6050a0" stroke-width="0.6"/>
-    <path d="M15,23 C16,21 17,19 18,18 C18,21 17,23 15,23" fill="#f5e060" opacity="0.9"/>
-    <path d="M21,23 C20,21 19,19 18,18 C18,21 19,23 21,23" fill="#f5e060" opacity="0.9"/>`),
-
-  violet: _svg(_SL, `
-    <path d="M18,22 C14,18 10,12 12,7  C14,11 16,17 18,22" fill="#8878c8" stroke="#6858a8" stroke-width="0.8"/>
-    <path d="M18,22 C22,18 26,12 24,7  C22,11 20,17 18,22" fill="#7868b0" stroke="#6858a8" stroke-width="0.8"/>
-    <path d="M18,22 C12,21 6,18 5,14   C9,17 14,19 18,22" fill="#9080c8" stroke="#6858a8" stroke-width="0.8"/>
-    <path d="M18,22 C24,21 30,18 31,14 C27,17 22,19 18,22" fill="#9080c8" stroke="#6858a8" stroke-width="0.8"/>
-    <path d="M18,22 C16,26 14,30 12,29 C13,26 15,24 18,22" fill="#8878c8" stroke="#6858a8" stroke-width="0.8"/>
-    <circle cx="18" cy="21" r="3" fill="#f5e060" stroke="#c8b030" stroke-width="0.5"/>
-    <path d="M14,28 C15,25 17,23 18,22" stroke="#5040a0" stroke-width="0.6" fill="none" opacity="0.5"/>
-    <path d="M16,29 C16,26 17,24 18,22" stroke="#5040a0" stroke-width="0.6" fill="none" opacity="0.5"/>`),
-
-  jonquil: _svg(_SL, `
-    <ellipse cx="18"   cy="7"    rx="2.8" ry="5.5" fill="white"   stroke="#c8c4a0" stroke-width="0.5"/>
-    <ellipse cx="25.8" cy="11.5" rx="2.8" ry="5.5" transform="rotate(60,25.8,11.5)"  fill="white" stroke="#c8c4a0" stroke-width="0.5"/>
-    <ellipse cx="25.8" cy="20.5" rx="2.8" ry="5.5" transform="rotate(120,25.8,20.5)" fill="white" stroke="#c8c4a0" stroke-width="0.5"/>
-    <ellipse cx="18"   cy="25"   rx="2.8" ry="5.5" fill="white"   stroke="#c8c4a0" stroke-width="0.5"/>
-    <ellipse cx="10.2" cy="20.5" rx="2.8" ry="5.5" transform="rotate(240,10.2,20.5)" fill="white" stroke="#c8c4a0" stroke-width="0.5"/>
-    <ellipse cx="10.2" cy="11.5" rx="2.8" ry="5.5" transform="rotate(300,10.2,11.5)" fill="white" stroke="#c8c4a0" stroke-width="0.5"/>
-    <circle cx="18" cy="16" r="5"   fill="#f5d040" stroke="#d0a820" stroke-width="1.2"/>
-    <circle cx="18" cy="16" r="3"   fill="#f0c020"/>`),
-
-  daffodil: _svg(_SL, `
-    <ellipse cx="18"   cy="7"    rx="3" ry="6" fill="#f5d040" stroke="#c8a820" stroke-width="0.6"/>
-    <ellipse cx="25.8" cy="11.5" rx="3" ry="6" transform="rotate(60,25.8,11.5)"  fill="#f5d040" stroke="#c8a820" stroke-width="0.6"/>
-    <ellipse cx="25.8" cy="20.5" rx="3" ry="6" transform="rotate(120,25.8,20.5)" fill="#f5d040" stroke="#c8a820" stroke-width="0.6"/>
-    <ellipse cx="18"   cy="25"   rx="3" ry="6" fill="#f5d040" stroke="#c8a820" stroke-width="0.6"/>
-    <ellipse cx="10.2" cy="20.5" rx="3" ry="6" transform="rotate(240,10.2,20.5)" fill="#f5d040" stroke="#c8a820" stroke-width="0.6"/>
-    <ellipse cx="10.2" cy="11.5" rx="3" ry="6" transform="rotate(300,10.2,11.5)" fill="#f5d040" stroke="#c8a820" stroke-width="0.6"/>
-    <circle cx="18" cy="16" r="5.5" fill="#f0a820" stroke="#c07818" stroke-width="1.2"/>
-    <circle cx="18" cy="16" r="3.5" fill="#f5c030"/>`),
-
-  daisy: _svg(_SL, `
-    <ellipse cx="18"   cy="8"    rx="2.2" ry="5" fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="22.7" cy="9.5"  rx="2.2" ry="5" transform="rotate(36,22.7,9.5)"   fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="25.6" cy="13.5" rx="2.2" ry="5" transform="rotate(72,25.6,13.5)"  fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="25.6" cy="18.5" rx="2.2" ry="5" transform="rotate(108,25.6,18.5)" fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="22.7" cy="22.5" rx="2.2" ry="5" transform="rotate(144,22.7,22.5)" fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="18"   cy="24"   rx="2.2" ry="5" fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="13.3" cy="22.5" rx="2.2" ry="5" transform="rotate(216,13.3,22.5)" fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="10.4" cy="18.5" rx="2.2" ry="5" transform="rotate(252,10.4,18.5)" fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="10.4" cy="13.5" rx="2.2" ry="5" transform="rotate(288,10.4,13.5)" fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <ellipse cx="13.3" cy="9.5"  rx="2.2" ry="5" transform="rotate(324,13.3,9.5)"  fill="white" stroke="#c8c0b0" stroke-width="0.5"/>
-    <circle cx="18" cy="16" r="5" fill="#f5cc20" stroke="#c8a010" stroke-width="0.8"/>`),
-
-  sweet_pea: _svg(_SR, `
-    <path d="M18,8  C10,7  7,13  8,18 C9,22 13,24 18,25 C23,24 27,22 28,18 C29,13 26,7 18,8 Z" fill="#c080b8" stroke="#9858a0" stroke-width="0.8"/>
-    <path d="M18,10 C13,10 11,14 12,17 C13,20 15,22 18,22 C21,22 23,20 24,17 C25,14 23,10 18,10 Z" fill="#d090c8" stroke="#9858a0" stroke-width="0.5"/>
-    <path d="M13,22 C10,26 11,31 14,30 C15,27 14,24 13,22" fill="#b870a8" stroke="#9858a0" stroke-width="0.6"/>
-    <path d="M23,22 C26,26 25,31 22,30 C21,27 22,24 23,22" fill="#b870a8" stroke="#9858a0" stroke-width="0.6"/>
-    <circle cx="18" cy="16" r="2.5" fill="#f0e0f0"/>`),
-
-  hawthorn: _svg(_SL, `
-    <path d="M18,28 C14,24 10,20 12,16 C14,18 16,22 18,28" fill="#5a9055" stroke="#3d6e3a" stroke-width="0.4"/>
-    <path d="M18,28 C22,24 26,20 24,16 C22,18 20,22 18,28" fill="#5a9055" stroke="#3d6e3a" stroke-width="0.4"/>
-    <circle cx="18" cy="12" r="5"   fill="#d04848" stroke="#a03030" stroke-width="0.8"/>
-    <circle cx="10" cy="16" r="4.5" fill="#c83838" stroke="#a03030" stroke-width="0.7"/>
-    <circle cx="26" cy="16" r="4.5" fill="#c83838" stroke="#a03030" stroke-width="0.7"/>
-    <circle cx="13" cy="22" r="4"   fill="#d04848" stroke="#a03030" stroke-width="0.7"/>
-    <circle cx="23" cy="22" r="4"   fill="#c83838" stroke="#a03030" stroke-width="0.7"/>
-    <circle cx="18" cy="12" r="1.5" fill="#f5e040"/>
-    <circle cx="10" cy="16" r="1.3" fill="#f5e040"/>
-    <circle cx="26" cy="16" r="1.3" fill="#f5e040"/>
-    <circle cx="13" cy="22" r="1.2" fill="#f5e040"/>
-    <circle cx="23" cy="22" r="1.2" fill="#f5e040"/>`),
-
-  lily_valley: _svg(`<line x1="18" y1="58" x2="18" y2="22" stroke="#3d6e3a" stroke-width="1.4"/>
-    <path d="M18,40 C8,33 6,24 10,18  C12,23 15,32 18,40" fill="#5a9055" stroke="#3d6e3a" stroke-width="0.4"/>
-    <path d="M18,40 C28,33 30,24 26,18 C24,23 21,32 18,40" fill="#4a8047" stroke="#3d6e3a" stroke-width="0.4"/>`, `
-    <path d="M18,22 C20,16 24,12 26,8" stroke="#4a7c4e" stroke-width="1.2" fill="none"/>
-    <path d="M18,22 C16,16 12,12 10,8" stroke="#4a7c4e" stroke-width="1"   fill="none"/>
-    <path d="M24,10 C21,9  20,13 21,16 C22,18 25,18 26,15 C27,12 26,9  24,10 Z" fill="white" stroke="#90b090" stroke-width="0.7"/>
-    <path d="M20,17 C17,16 16,20 17,23 C18,25 21,25 22,22 C23,19 22,16 20,17 Z" fill="white" stroke="#90b090" stroke-width="0.7"/>
-    <path d="M11,9  C8,8   7,12  8,15  C9,17  12,17 13,14 C14,11 13,8  11,9  Z" fill="white" stroke="#90b090" stroke-width="0.7"/>
-    <path d="M14,17 C11,16 10,20 11,23 C12,25 15,25 16,22 C17,19 16,16 14,17 Z" fill="white" stroke="#90b090" stroke-width="0.7"/>`),
-
-  rose: _svg(_SL, `
-    <path d="M12,28 C10,26 9,22 12,20  C13,23 12,26 12,28" fill="#4a8047"/>
-    <path d="M24,28 C26,26 27,22 24,20 C23,23 24,26 24,28" fill="#4a8047"/>
-    <path d="M18,28 C17,25 16,22 17,20 C18,20 20,20 19,22 C19,25 18,27 18,28" fill="#4a8047"/>
-    <path d="M18,26 C9,24 6,18 8,12 C11,8 15,7 18,8 C21,7 25,8 28,12 C30,18 27,24 18,26 Z" fill="#c84040" stroke="#a02828" stroke-width="0.8"/>
-    <path d="M18,23 C12,22 10,17 12,13 C14,10 16,9 18,10 C20,9 22,10 24,13 C26,17 24,22 18,23 Z" fill="#d85050" stroke="#a02828" stroke-width="0.7"/>
-    <path d="M18,20 C14,19 13,16 15,13 C16,11 17,10 18,11 C19,10 20,11 21,13 C23,16 22,19 18,20 Z" fill="#e06060" stroke="#a02828" stroke-width="0.6"/>
-    <path d="M18,18 C16,17 16,15 17,13 C17,15 18,17 18,18 Z" fill="#f08080"/>
-    <path d="M18,18 C20,17 20,15 19,13 C19,15 18,17 18,18 Z" fill="#e87070"/>`),
-
-  honeysuckle: _svg(_SL, `
-    <path d="M18,28 C22,24 26,20 26,14" stroke="#4a7c4e" stroke-width="1.2" fill="none"/>
-    <path d="M18,28 C14,22 10,18 10,12" stroke="#4a7c4e" stroke-width="1"   fill="none"/>
-    <path d="M22,14 C20,8 18,7 16,9 C14,11 14,16 18,18 C20,17 22,16 22,14 Z" fill="#f0d0a8" stroke="#c09870" stroke-width="0.8"/>
-    <path d="M22,14 C24,12 26,12 26,14 C26,16 24,18 22,18 C22,16 22,15 22,14" fill="#f8e0b8" stroke="#c09870" stroke-width="0.6"/>
-    <path d="M11,12 C9,6 7,5 5,7 C3,9 3,14 7,16 C9,15 11,14 11,12 Z" fill="#f0d8b8" stroke="#c09870" stroke-width="0.7"/>
-    <path d="M11,12 C13,10 15,10 15,12 C15,14 13,16 11,16 C11,14 11,13 11,12" fill="#f8e0c0" stroke="#c09870" stroke-width="0.5"/>
-    <line x1="18" y1="14" x2="26" y2="10" stroke="#d0a060" stroke-width="0.7"/>
-    <line x1="18" y1="14" x2="27" y2="12" stroke="#d0a060" stroke-width="0.6"/>`),
-
-  larkspur: _svg(_ST, `
-    <path d="M18,26 C13,24 10,20 12,16 C13,18 16,22 18,26" fill="#6080c8" stroke="#4060a8" stroke-width="0.6"/>
-    <path d="M18,26 C23,24 26,20 24,16 C23,18 20,22 18,26" fill="#5070b8" stroke="#4060a8" stroke-width="0.6"/>
-    <path d="M18,26 C16,29 14,30 13,28 C14,26 16,26 18,26" fill="#7090d0" stroke="#4060a8" stroke-width="0.5"/>
-    <path d="M18,18 C13,16 10,12 12,8  C13,10 16,14 18,18" fill="#6080c8" stroke="#4060a8" stroke-width="0.6"/>
-    <path d="M18,18 C23,16 26,12 24,8  C23,10 20,14 18,18" fill="#5070b8" stroke="#4060a8" stroke-width="0.6"/>
-    <path d="M18,18 C16,21 14,22 13,20 C14,18 16,18 18,18" fill="#7090d0" stroke="#4060a8" stroke-width="0.5"/>
-    <ellipse cx="18" cy="9"  rx="3.5" ry="4.5" fill="#7090d0" stroke="#5070b0" stroke-width="0.8"/>
-    <ellipse cx="18" cy="5"  rx="2"   ry="3"   fill="#9ab0e0"/>`),
-
-  water_lily: _svg(_SL, `
-    <ellipse cx="18"   cy="7"    rx="3" ry="6.5" fill="#a090d0" stroke="#7868b0" stroke-width="0.6"/>
-    <ellipse cx="24.2" cy="9.2"  rx="3" ry="6.5" transform="rotate(45,24.2,9.2)"   fill="#9888c8" stroke="#7868b0" stroke-width="0.6"/>
-    <ellipse cx="27"   cy="16"   rx="3" ry="6.5" transform="rotate(90,27,16)"       fill="#a090d0" stroke="#7868b0" stroke-width="0.6"/>
-    <ellipse cx="24.2" cy="22.8" rx="3" ry="6.5" transform="rotate(135,24.2,22.8)" fill="#9888c8" stroke="#7868b0" stroke-width="0.6"/>
-    <ellipse cx="18"   cy="25"   rx="3" ry="6.5" fill="#a090d0" stroke="#7868b0" stroke-width="0.6"/>
-    <ellipse cx="11.8" cy="22.8" rx="3" ry="6.5" transform="rotate(225,11.8,22.8)" fill="#9888c8" stroke="#7868b0" stroke-width="0.6"/>
-    <ellipse cx="9"    cy="16"   rx="3" ry="6.5" transform="rotate(270,9,16)"       fill="#a090d0" stroke="#7868b0" stroke-width="0.6"/>
-    <ellipse cx="11.8" cy="9.2"  rx="3" ry="6.5" transform="rotate(315,11.8,9.2)"  fill="#9888c8" stroke="#7868b0" stroke-width="0.6"/>
-    <circle cx="18" cy="16" r="5" fill="#f5e080" stroke="#c8b030" stroke-width="0.8"/>
-    <circle cx="18" cy="16" r="3" fill="#f8f080"/>`),
-
-  poppy: _svg(`<line x1="18" y1="58" x2="18" y2="28" stroke="#3d6e3a" stroke-width="1.4"/>
-    <path d="M18,43 C9,36 8,29 13,26 C15,30 17,37 18,43" fill="#5a9055"/>
-    <path d="M14,28 C14,24 16,22 18,22 C20,22 22,24 22,28" fill="#4a8047"/>`, `
-    <ellipse cx="18" cy="8"  rx="7"   ry="8.5" fill="#d03830" stroke="#a02020" stroke-width="0.8"/>
-    <ellipse cx="26" cy="16" rx="8.5" ry="7"   fill="#d03830" stroke="#a02020" stroke-width="0.8"/>
-    <ellipse cx="18" cy="24" rx="7"   ry="8.5" fill="#d03830" stroke="#a02020" stroke-width="0.8"/>
-    <ellipse cx="10" cy="16" rx="8.5" ry="7"   fill="#d03830" stroke="#a02020" stroke-width="0.8"/>
-    <circle cx="18" cy="16" r="5.5" fill="#1e1020"/>
-    <circle cx="18" cy="13" r="0.8" fill="#f5e030"/>
-    <circle cx="21" cy="14" r="0.8" fill="#f5e030"/>
-    <circle cx="22" cy="17" r="0.8" fill="#f5e030"/>
-    <circle cx="21" cy="20" r="0.8" fill="#f5e030"/>
-    <circle cx="18" cy="21" r="0.8" fill="#f5e030"/>
-    <circle cx="15" cy="20" r="0.8" fill="#f5e030"/>
-    <circle cx="14" cy="17" r="0.8" fill="#f5e030"/>
-    <circle cx="15" cy="14" r="0.8" fill="#f5e030"/>`),
-
-  gladiolus: _svg(_ST, `
-    <path d="M18,28 C11,25 8,20 10,16 C12,18 15,23 18,28" fill="#d06040" stroke="#a04028" stroke-width="0.8"/>
-    <path d="M18,28 C25,25 28,20 26,16 C24,18 21,23 18,28" fill="#c05030" stroke="#a04028" stroke-width="0.8"/>
-    <path d="M18,28 C16,32 14,34 12,32 C13,30 15,29 18,28" fill="#d06040"/>
-    <path d="M18,28 C20,32 22,34 24,32 C23,30 21,29 18,28" fill="#d06040"/>
-    <path d="M18,20 C11,17  9,12 11,8  C13,10 16,15 18,20" fill="#d06040" stroke="#a04028" stroke-width="0.7"/>
-    <path d="M18,20 C25,17 27,12 25,8  C23,10 20,15 18,20" fill="#c05030" stroke="#a04028" stroke-width="0.7"/>
-    <path d="M15,8 C15,4 17,3 18,3 C19,3 21,4 21,8 C20,10 16,10 15,8 Z" fill="#e07050" stroke="#a04028" stroke-width="0.7"/>`),
-
-  morning_glory: _svg(_SR, `
-    <path d="M18,26 C8,22  4,14  6,8  C8,5  12,4 16,6  C14,8 12,14 18,26 Z" fill="#7060c0" stroke="#5040a0" stroke-width="0.8"/>
-    <path d="M18,26 C28,22 32,14 30,8 C28,5 24,4 20,6 C22,8 24,14 18,26 Z" fill="#6050b0" stroke="#5040a0" stroke-width="0.8"/>
-    <path d="M18,26 C12,28  6,26  4,22 C6,20  12,22 18,26 Z" fill="#7060c0" stroke="#5040a0" stroke-width="0.7"/>
-    <path d="M18,26 C24,28 30,26 32,22 C30,20 24,22 18,26 Z" fill="#6050b0" stroke="#5040a0" stroke-width="0.7"/>
-    <path d="M18,26 C16,30 14,32 12,30 C13,28 15,27 18,26" fill="#7868c8" stroke="#5040a0" stroke-width="0.5"/>
-    <path d="M18,26 C17,20 16,14 17,8  C18,12 18,20 18,26" fill="white" opacity="0.3"/>
-    <path d="M18,26 C14,22 10,18  8,14 C11,16 15,20 18,26" fill="white" opacity="0.2"/>
-    <path d="M18,26 C22,22 26,18 28,14 C25,16 21,20 18,26" fill="white" opacity="0.2"/>
-    <circle cx="18" cy="24" r="3.5" fill="white" opacity="0.85"/>`),
-
-  aster: _svg(_SL, `
-    <ellipse cx="18"   cy="7.5"  rx="2" ry="5.5" fill="#9080d0" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="20.9" cy="8.3"  rx="2" ry="5.5" transform="rotate(25.7,20.9,8.3)"   fill="#8878c8" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="23.3" cy="10.5" rx="2" ry="5.5" transform="rotate(51.4,23.3,10.5)"  fill="#9080d0" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="24.5" cy="13.7" rx="2" ry="5.5" transform="rotate(77.1,24.5,13.7)"  fill="#8878c8" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="24.3" cy="17.2" rx="2" ry="5.5" transform="rotate(102.9,24.3,17.2)" fill="#9080d0" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="22.6" cy="20.4" rx="2" ry="5.5" transform="rotate(128.6,22.6,20.4)" fill="#8878c8" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="20"   cy="22.6" rx="2" ry="5.5" transform="rotate(154.3,20,22.6)"   fill="#9080d0" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="18"   cy="24.5" rx="2" ry="5.5" fill="#8878c8" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="16"   cy="22.6" rx="2" ry="5.5" transform="rotate(205.7,16,22.6)"   fill="#9080d0" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="13.4" cy="20.4" rx="2" ry="5.5" transform="rotate(231.4,13.4,20.4)" fill="#8878c8" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="11.7" cy="17.2" rx="2" ry="5.5" transform="rotate(257.1,11.7,17.2)" fill="#9080d0" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="11.5" cy="13.7" rx="2" ry="5.5" transform="rotate(282.9,11.5,13.7)" fill="#8878c8" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="12.7" cy="10.5" rx="2" ry="5.5" transform="rotate(308.6,12.7,10.5)" fill="#9080d0" stroke="#7060b0" stroke-width="0.5"/>
-    <ellipse cx="15.1" cy="8.3"  rx="2" ry="5.5" transform="rotate(334.3,15.1,8.3)"  fill="#8878c8" stroke="#7060b0" stroke-width="0.5"/>
-    <circle cx="18" cy="16" r="4.5" fill="#f5cc20" stroke="#c8a010" stroke-width="0.8"/>`),
-
-  cosmos: _svg(_SL, `
-    <ellipse cx="18"   cy="8"    rx="3" ry="6" fill="#e888b8" stroke="#c06090" stroke-width="0.6"/>
-    <ellipse cx="23.7" cy="10.3" rx="3" ry="6" transform="rotate(45,23.7,10.3)"  fill="#e080b0" stroke="#c06090" stroke-width="0.6"/>
-    <ellipse cx="26"   cy="16"   rx="3" ry="6" transform="rotate(90,26,16)"       fill="#e888b8" stroke="#c06090" stroke-width="0.6"/>
-    <ellipse cx="23.7" cy="21.7" rx="3" ry="6" transform="rotate(135,23.7,21.7)" fill="#e080b0" stroke="#c06090" stroke-width="0.6"/>
-    <ellipse cx="18"   cy="24"   rx="3" ry="6" fill="#e888b8" stroke="#c06090" stroke-width="0.6"/>
-    <ellipse cx="12.3" cy="21.7" rx="3" ry="6" transform="rotate(225,12.3,21.7)" fill="#e080b0" stroke="#c06090" stroke-width="0.6"/>
-    <ellipse cx="10"   cy="16"   rx="3" ry="6" transform="rotate(270,10,16)"      fill="#e888b8" stroke="#c06090" stroke-width="0.6"/>
-    <ellipse cx="12.3" cy="10.3" rx="3" ry="6" transform="rotate(315,12.3,10.3)" fill="#e080b0" stroke="#c06090" stroke-width="0.6"/>
-    <circle cx="18" cy="16" r="4" fill="#f5cc20" stroke="#c8a010" stroke-width="0.8"/>`),
-
-  marigold: _svg(_SL, `
-    <ellipse cx="18"   cy="7"    rx="3.2" ry="5.5" fill="#e88030" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="22.8" cy="8.5"  rx="3.2" ry="5.5" transform="rotate(36,22.8,8.5)"   fill="#f09040" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="25.7" cy="12.5" rx="3.2" ry="5.5" transform="rotate(72,25.7,12.5)"  fill="#e88030" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="25.7" cy="17.5" rx="3.2" ry="5.5" transform="rotate(108,25.7,17.5)" fill="#f09040" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="22.8" cy="21.5" rx="3.2" ry="5.5" transform="rotate(144,22.8,21.5)" fill="#e88030" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="18"   cy="23"   rx="3.2" ry="5.5" fill="#f09040" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="13.2" cy="21.5" rx="3.2" ry="5.5" transform="rotate(216,13.2,21.5)" fill="#e88030" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="10.3" cy="17.5" rx="3.2" ry="5.5" transform="rotate(252,10.3,17.5)" fill="#f09040" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="10.3" cy="12.5" rx="3.2" ry="5.5" transform="rotate(288,10.3,12.5)" fill="#e88030" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="13.2" cy="8.5"  rx="3.2" ry="5.5" transform="rotate(324,13.2,8.5)"  fill="#f09040" stroke="#b85820" stroke-width="0.6"/>
-    <ellipse cx="18"   cy="9"    rx="2.5" ry="4"   fill="#f09040" stroke="#b85820" stroke-width="0.5"/>
-    <ellipse cx="21"   cy="10.5" rx="2.5" ry="4"   transform="rotate(36,21,10.5)"    fill="#e88030" stroke="#b85820" stroke-width="0.5"/>
-    <ellipse cx="23"   cy="14"   rx="2.5" ry="4"   transform="rotate(72,23,14)"      fill="#f09040" stroke="#b85820" stroke-width="0.5"/>
-    <ellipse cx="23"   cy="18"   rx="2.5" ry="4"   transform="rotate(108,23,18)"     fill="#e88030" stroke="#b85820" stroke-width="0.5"/>
-    <ellipse cx="21"   cy="21.5" rx="2.5" ry="4"   transform="rotate(144,21,21.5)"   fill="#f09040" stroke="#b85820" stroke-width="0.5"/>
-    <ellipse cx="15"   cy="21.5" rx="2.5" ry="4"   transform="rotate(216,15,21.5)"   fill="#e88030" stroke="#b85820" stroke-width="0.5"/>
-    <ellipse cx="13"   cy="18"   rx="2.5" ry="4"   transform="rotate(252,13,18)"     fill="#f09040" stroke="#b85820" stroke-width="0.5"/>
-    <ellipse cx="13"   cy="14"   rx="2.5" ry="4"   transform="rotate(288,13,14)"     fill="#e88030" stroke="#b85820" stroke-width="0.5"/>
-    <ellipse cx="15"   cy="10.5" rx="2.5" ry="4"   transform="rotate(324,15,10.5)"   fill="#f09040" stroke="#b85820" stroke-width="0.5"/>
-    <circle cx="18" cy="16" r="4" fill="#f5c020" stroke="#c89010" stroke-width="0.7"/>`),
-
-  chrysanthemum: _svg(_SL, `
-    <ellipse cx="18"   cy="6"    rx="1.8" ry="7" fill="#e01878" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="21.1" cy="6.7"  rx="1.8" ry="7" transform="rotate(20,21.1,6.7)"   fill="#f02088" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="23.8" cy="8.6"  rx="1.8" ry="7" transform="rotate(40,23.8,8.6)"   fill="#e01878" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="25.6" cy="11.6" rx="1.8" ry="7" transform="rotate(60,25.6,11.6)"  fill="#f02088" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="26.3" cy="15"   rx="1.8" ry="7" transform="rotate(80,26.3,15)"    fill="#e01878" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="25.8" cy="18.4" rx="1.8" ry="7" transform="rotate(100,25.8,18.4)" fill="#f02088" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="24.1" cy="21.5" rx="1.8" ry="7" transform="rotate(120,24.1,21.5)" fill="#e01878" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="21.4" cy="23.9" rx="1.8" ry="7" transform="rotate(140,21.4,23.9)" fill="#f02088" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="18"   cy="25"   rx="1.8" ry="7" fill="#e01878" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="14.6" cy="23.9" rx="1.8" ry="7" transform="rotate(220,14.6,23.9)" fill="#f02088" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="11.9" cy="21.5" rx="1.8" ry="7" transform="rotate(240,11.9,21.5)" fill="#e01878" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="10.2" cy="18.4" rx="1.8" ry="7" transform="rotate(260,10.2,18.4)" fill="#f02088" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="9.7"  cy="15"   rx="1.8" ry="7" transform="rotate(280,9.7,15)"    fill="#e01878" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="10.4" cy="11.6" rx="1.8" ry="7" transform="rotate(300,10.4,11.6)" fill="#f02088" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="12.2" cy="8.6"  rx="1.8" ry="7" transform="rotate(320,12.2,8.6)"  fill="#e01878" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="14.9" cy="6.7"  rx="1.8" ry="7" transform="rotate(340,14.9,6.7)"  fill="#f02088" stroke="#a01058" stroke-width="0.5"/>
-    <ellipse cx="18"   cy="9"    rx="1.5" ry="6" fill="#f02888" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="21.4" cy="9.9"  rx="1.5" ry="6" transform="rotate(30,21.4,9.9)"   fill="#e01878" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="23.8" cy="13"   rx="1.5" ry="6" transform="rotate(60,23.8,13)"    fill="#f02888" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="23.8" cy="17"   rx="1.5" ry="6" transform="rotate(90,23.8,17)"    fill="#e01878" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="21.4" cy="21"   rx="1.5" ry="6" transform="rotate(120,21.4,21)"   fill="#f02888" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="18"   cy="23"   rx="1.5" ry="6" fill="#e01878" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="14.6" cy="21"   rx="1.5" ry="6" transform="rotate(240,14.6,21)"   fill="#f02888" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="12.2" cy="17"   rx="1.5" ry="6" transform="rotate(270,12.2,17)"   fill="#e01878" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="12.2" cy="13"   rx="1.5" ry="6" transform="rotate(300,12.2,13)"   fill="#f02888" stroke="#a01058" stroke-width="0.4"/>
-    <ellipse cx="14.6" cy="9.9"  rx="1.5" ry="6" transform="rotate(330,14.6,9.9)"  fill="#e01878" stroke="#a01058" stroke-width="0.4"/>`),
-
-  peony: _svg(_SL, `
-    <path d="M9,28  C9,22 12,17 18,14 C24,17 27,22 27,28" fill="#d88098" stroke="#c06080" stroke-width="0.6"/>
-    <path d="M18,26 C10,24 7,18 9,12 C12,8 15,7 18,8 C21,7 24,8 27,12 C29,18 26,24 18,26 Z" fill="#e8a8b8" stroke="#c07090" stroke-width="0.8"/>
-    <path d="M18,23 C12,21 10,17 12,12 C14,9 16,8 18,9 C20,8 22,9 24,12 C26,17 24,21 18,23 Z" fill="#f0b8c8" stroke="#c07090" stroke-width="0.7"/>
-    <path d="M18,20 C14,19 12,16 13,12 C14,10 16,9 18,10 C20,9 22,10 23,12 C24,16 22,19 18,20 Z" fill="#f8c8d4" stroke="#c07090" stroke-width="0.6"/>
-    <path d="M18,18 C15,17 14,15 15,12 C16,10 17,10 18,11 C19,10 20,10 21,12 C22,15 21,17 18,18 Z" fill="#fcd8e0" stroke="#c07090" stroke-width="0.5"/>
-    <path d="M18,16 C16,15 17,13 18,12 C19,13 20,15 18,16 Z" fill="#ffe8f0"/>`),
-
-  narcissus: _svg(_SL, `
-    <ellipse cx="18"   cy="7"    rx="2.8" ry="5.5" fill="white"   stroke="#c0b890" stroke-width="0.6"/>
-    <ellipse cx="25.8" cy="11.5" rx="2.8" ry="5.5" transform="rotate(60,25.8,11.5)"  fill="#f5f0e0" stroke="#c0b890" stroke-width="0.6"/>
-    <ellipse cx="25.8" cy="20.5" rx="2.8" ry="5.5" transform="rotate(120,25.8,20.5)" fill="white"   stroke="#c0b890" stroke-width="0.6"/>
-    <ellipse cx="18"   cy="25"   rx="2.8" ry="5.5" fill="#f5f0e0" stroke="#c0b890" stroke-width="0.6"/>
-    <ellipse cx="10.2" cy="20.5" rx="2.8" ry="5.5" transform="rotate(240,10.2,20.5)" fill="white"   stroke="#c0b890" stroke-width="0.6"/>
-    <ellipse cx="10.2" cy="11.5" rx="2.8" ry="5.5" transform="rotate(300,10.2,11.5)" fill="#f5f0e0" stroke="#c0b890" stroke-width="0.6"/>
-    <circle cx="18" cy="16" r="5.5" fill="#f0a820" stroke="#c07810" stroke-width="1.2"/>
-    <circle cx="18" cy="16" r="4"   fill="#f5c030"/>
-    <circle cx="18" cy="16" r="2.5" fill="#f8d050"/>`),
-
-  holly: `<svg viewBox="0 0 36 60" xmlns="http://www.w3.org/2000/svg">
-    <line x1="18" y1="58" x2="18" y2="36" stroke="#3d6e3a" stroke-width="1.4"/>
-    <path d="M18,36 C14,29 10,23 8,16"  stroke="#3d6e3a" stroke-width="1.2" fill="none"/>
-    <path d="M18,36 C22,29 26,23 28,16" stroke="#3d6e3a" stroke-width="1"   fill="none"/>
-    <path d="M8,16  C4,14  3,10  5,7  C7,8  8,10 8,13 C9,10  11,8  13,9  C13,12 11,14 8,16  Z" fill="#2a7828" stroke="#1a5020" stroke-width="0.7"/>
-    <path d="M8,16  C5,19  4,23  6,25 C8,23  9,20 8,16  Z" fill="#2a7828" stroke="#1a5020" stroke-width="0.6"/>
-    <path d="M28,15 C32,13 33,9  31,6 C29,7 28,9 28,12 C27,9  25,7  23,8  C23,11 25,13 28,15 Z" fill="#348030" stroke="#1a5020" stroke-width="0.7"/>
-    <path d="M28,15 C31,18 32,22 30,24 C28,22 27,19 28,15 Z" fill="#348030" stroke="#1a5020" stroke-width="0.6"/>
-    <circle cx="16" cy="26" r="4"   fill="#d03030" stroke="#901818" stroke-width="0.8"/>
-    <circle cx="21" cy="24" r="4"   fill="#c82828" stroke="#901818" stroke-width="0.8"/>
-    <circle cx="18" cy="30" r="3.5" fill="#d83030" stroke="#901818" stroke-width="0.8"/>
-    <circle cx="16" cy="26" r="1.2" fill="#e84040" opacity="0.5"/>
-    <circle cx="21" cy="24" r="1.2" fill="#e84040" opacity="0.5"/>
-    <circle cx="18" cy="30" r="1"   fill="#e84040" opacity="0.5"/>
-  </svg>`,
-};
 
 const FLOWER_LIST = [
   'carnation','snowdrop','iris','violet','jonquil','daffodil',
@@ -1253,17 +1048,73 @@ const FLOWER_MINI_COLOR = {
   chrysanthemum:'#e01878', peony:'#e8a8b8', narcissus:'#f5f0e0', holly:'#2a7828',
 };
 
-function render_vase_flowers(vase_flowers) {
-  if (!vase_flowers || vase_flowers.length === 0) return '';
-  const n = vase_flowers.length;
-  const max_h = 68;
+function stable_flower_jitter(id, index, salt, amount) {
+  const key = `${id}:${index}:${salt}`;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) % 9973;
+  }
+  return ((hash / 9972) * 2 - 1) * amount;
+}
+
+function get_vase_flower_layout(vase_flowers) {
+  const n        = vase_flowers.length;
   return vase_flowers.map((id, i) => {
-    const x   = (24 + (i + 1) * 32 / (n + 1)).toFixed(1);
-    const h   = Math.round(max_h * Math.sin(Math.PI * (i + 1) / (n + 1)));
-    const ty  = 4 - h;
-    const col = FLOWER_MINI_COLOR[id] || '#e0a0b0';
-    return `<line x1="${x}" y1="4" x2="${x}" y2="${ty + 4}" stroke="#4a7c4e" stroke-width="1.2"/>
-<circle cx="${x}" cy="${ty}" r="4.2" fill="${col}" stroke="rgba(0,0,0,0.18)" stroke-width="0.7"/>`;
+    const t      = n === 1 ? 0.5 : i / (n - 1);
+    const side_distance = Math.abs(t - 0.5) * 2;
+    const center_proximity = 1 - Math.abs(t - 0.5) * 2;
+    const base_jitter = stable_flower_jitter(id, i, 'base', 4);
+    const rim_jitter  = stable_flower_jitter(id, i, 'rim', 3.5);
+    const lift_jitter = stable_flower_jitter(id, i, 'lift', 3);
+    const base_x = n === 1 ? 40 : 75 - t * 70 + base_jitter;
+    const base_y = n === 1 ? 120 : 120 - side_distance * 12 + stable_flower_jitter(id, i, 'base_y', 1.8);
+    const rim_x  = n === 1 ? 40 : 8 + t * 64 + rim_jitter;
+    const rim_y  = 4 + stable_flower_jitter(id, i, 'rim_y', 0.8);
+    const stem_lift = Math.max(0, Math.round(Math.pow(center_proximity, 1.7) * 20 + lift_jitter - side_distance * 8));
+    const angle  = Math.atan2(rim_x - base_x, base_y - rim_y) * 180 / Math.PI;
+    return { id, base_x, base_y, rim_x, rim_y, stem_lift, angle };
+  });
+}
+
+function extend_flower_center_stem(svg_inner, stem_lift) {
+  if (stem_lift <= 0) return { inner: svg_inner, extended: false };
+  const center_stem_pattern = /<line x1="18" y1="(?:52|56)" x2="18" y2="([^"]+)" stroke="(#(?:3d6e3a|4a7c4e))" stroke-width="[^"]+"([^>]*)\/>/;
+  const match = svg_inner.match(center_stem_pattern);
+  if (!match) return { inner: svg_inner, extended: false };
+  const [, stem_top_y, stem_color, rest] = match;
+  const overlap_y = 60 + stem_lift;
+  const extended_stem = `<line x1="18" y1="${overlap_y}" x2="18" y2="${stem_top_y}" stroke="${stem_color}" stroke-width="1.35"${rest}/>`;
+  const visible_stem_overlay = `<line x1="18" y1="${overlap_y}" x2="18" y2="${stem_top_y}" stroke="${stem_color}" stroke-width="1.35" stroke-linecap="round"/>`;
+  const extended_inner = svg_inner.replace(center_stem_pattern, extended_stem);
+  return {
+    inner: `${extended_inner}${visible_stem_overlay}`,
+    extended: true
+  };
+}
+
+function render_vase_flowers(vase_flowers, include_base_stems = true) {
+  if (!vase_flowers || vase_flowers.length === 0) return '';
+  const s = 1.4;
+  return get_vase_flower_layout(vase_flowers).map(({ id, base_x, base_y, rim_x, rim_y, stem_lift, angle }) => {
+    let inner = (FLOWER_SVG[id] || '').replace(/^<svg[^>]*>\s*/, '').replace(/\s*<\/svg>\s*$/, '');
+    const stem  = `<line x1="${base_x.toFixed(1)}" y1="${base_y.toFixed(1)}" x2="${rim_x.toFixed(1)}" y2="${rim_y.toFixed(1)}" stroke="#4a7c4e" stroke-width="1.35" opacity="0.96"/>`;
+    const center_stem = extend_flower_center_stem(inner, stem_lift);
+    inner = center_stem.inner;
+    let extension = stem_lift > 0
+      ? `<line x1="18" y1="${60 + stem_lift}" x2="18" y2="56" stroke="#4a7c4e" stroke-width="1.35" opacity="0.96" stroke-linecap="round"/>`
+      : '';
+    if (center_stem.extended) {
+      extension = '';
+    }
+    const flower = `<g transform="translate(${rim_x.toFixed(1)},${rim_y.toFixed(1)}) rotate(${angle.toFixed(1)}) scale(${s}) translate(-18,${-(56 + stem_lift)})">${extension}${inner}</g>`;
+    return `${include_base_stems ? stem : ''}${flower}`;
+  }).join('\n');
+}
+
+function render_vase_stems(vase_flowers) {
+  if (!vase_flowers || vase_flowers.length === 0) return '';
+  return get_vase_flower_layout(vase_flowers).map(({ base_x, base_y, rim_x, rim_y }) => {
+    return `<line x1="${base_x.toFixed(1)}" y1="${base_y.toFixed(1)}" x2="${rim_x.toFixed(1)}" y2="${rim_y.toFixed(1)}" stroke="#4a7c4e" stroke-width="1.35" opacity="0.92"/>`;
   }).join('\n');
 }
 
@@ -1279,28 +1130,56 @@ function render_flower_picker(user_id, wish_balance, vase_flowers) {
 
 // ═══════════════════════════════════════════════════════════════
 
+function render_vase_water_sparkles(water_y) {
+  if (water_y >= 116) return '';
+  const water_height = 120 - water_y;
+  const sparkles = [
+    { x: 19, y: 0.20, s: 2.4, d: '0s' },
+    { x: 36, y: 0.34, s: 1.8, d: '0.7s' },
+    { x: 57, y: 0.25, s: 2.2, d: '1.3s' },
+    { x: 27, y: 0.58, s: 1.9, d: '1.9s' },
+    { x: 49, y: 0.70, s: 2.5, d: '0.4s' },
+    { x: 62, y: 0.52, s: 1.6, d: '1.6s' },
+  ];
+  return sparkles.map(({ x, y, s, d }) => {
+    const cy = water_y + water_height * y;
+    return `<g transform="translate(${x},${cy.toFixed(1)})" opacity="0.9">
+      <path d="M 0 ${-s} L 0 ${s} M ${-s} 0 L ${s} 0" stroke="rgba(255,255,255,0.96)" stroke-width="0.75" stroke-linecap="round">
+        <animate attributeName="opacity" values="0.08;1;0.12" dur="2.15s" begin="${d}" repeatCount="indefinite"/>
+      </path>
+      <circle cx="0" cy="0" r="${(s * 0.48).toFixed(1)}" fill="rgba(230,248,255,0.9)">
+        <animate attributeName="opacity" values="0.1;1;0.12" dur="2.15s" begin="${d}" repeatCount="indefinite"/>
+      </circle>
+    </g>`;
+  }).join('');
+}
+
 function render_crystal_glass(user_id, wish_balance, vase_flowers) {
   const water_pct = Math.min(100, (wish_balance / total_wishes) * 100);
-  // Interior fills from y=4 (rim) to y=100 (base), height=96
-  const water_y = Math.round(4 + 96 * (1 - water_pct / 100));
+  // Interior fills from y=4 (rim) to y=120 (base), height=116
+  const water_y = Math.round(4 + 116 * (1 - water_pct / 100));
   const cid = `vc_${user_id}`;
+  const arc = `ar_${user_id}`;   // above-rim clip: y < 4 (vase mouth opening)
   const wg  = `wg_${user_id}`;
   const bg  = `bg_${user_id}`;
   const rg  = `rg_${user_id}`;
-  // Stepped cylinder: narrow neck (x=24-56) on top of wide body (x=8-72), flat shoulder ledge at y=45
-  const vp = "M 24,4 L 56,4 L 56,45 L 72,45 L 72,97 C 72,101 8,101 8,97 L 8,45 L 24,45 Z";
+  // Uniform cylinder: x=4-76, y=4-120
+  const vp = "M 4,4 L 76,4 L 76,120 C 76,124 4,124 4,120 Z";
 
-  // 15 uniform vertical ribs — clip-path auto hides those outside the narrow neck
-  const rib_xs  = [4,9,14,19,24,29,34,39,44,49,54,59,64,69,74,76];
-  const val_xs  = [6.5,11.5,16.5,21.5,26.5,31.5,36.5,41.5,46.5,51.5,56.5,61.5,66.5,71.5,75];
-  const ribs    = rib_xs.map(x => `<line x1="${x}" y1="0" x2="${x}" y2="104" stroke="rgba(255,255,255,0.07)" stroke-width="1.5"/>`).join("");
-  const valleys = val_xs.map(x  => `<line x1="${x}" y1="0" x2="${x}" y2="104" stroke="rgba(15,45,80,0.04)"  stroke-width="1"/>`).join("");
+  // Vertical ribs distributed across cylinder width
+  const rib_xs  = [6,12,18,24,30,36,42,48,54,60,66,72];
+  const val_xs  = [9,15,21,27,33,39,45,51,57,63,69];
+  const ribs    = rib_xs.map(x => `<line x1="${x}" y1="0" x2="${x}" y2="130" stroke="rgba(255,255,255,0.07)" stroke-width="1.5"/>`).join("");
+  const valleys = val_xs.map(x  => `<line x1="${x}" y1="0" x2="${x}" y2="130" stroke="rgba(15,45,80,0.04)"  stroke-width="1"/>`).join("");
 
   return `
+    <div class="vase_col">
     <div class="crystal_vase" aria-hidden="true">
-      <svg class="vase_svg" viewBox="0 -80 80 184" xmlns="http://www.w3.org/2000/svg">
+      <svg class="vase_svg" viewBox="-55 -120 190 295" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <clipPath id="${cid}"><path d="${vp}"/></clipPath>
+          <!-- clips to above-rim region (y < 4) — keeps stem thickness consistent at the rim -->
+          <clipPath id="${arc}"><rect x="-55" y="-120" width="190" height="124"/></clipPath>
           <linearGradient id="${wg}" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%"   stop-color="rgba(155,218,245,0.64)"/>
             <stop offset="100%" stop-color="rgba(80,155,208,0.84)"/>
@@ -1318,37 +1197,47 @@ function render_crystal_glass(user_id, wish_balance, vase_flowers) {
           </radialGradient>
         </defs>
         <!-- Water fill -->
-        <rect clip-path="url(#${cid})" x="0" y="${water_y}" width="80" height="104" fill="url(#${wg})"/>
+        <rect clip-path="url(#${cid})" x="0" y="${water_y}" width="80" height="140" fill="url(#${wg})"/>
         <!-- Water shimmer -->
-        <rect clip-path="url(#${cid})" x="-22" y="${water_y}" width="18" height="104" fill="rgba(255,255,255,0.24)">
+        <rect clip-path="url(#${cid})" x="-22" y="${water_y}" width="18" height="140" fill="rgba(255,255,255,0.24)">
           <animateTransform attributeName="transform" type="translate" from="0 0" to="106 0" dur="3.2s" repeatCount="indefinite"/>
         </rect>
-        <!-- Glass body -->
-        <path d="${vp}" fill="rgba(140,178,216,0.26)" stroke="rgba(255,255,255,0.42)" stroke-width="1.4"/>
+        <!-- Dreamy water sparkles -->
+        <g clip-path="url(#${cid})">${render_vase_water_sparkles(water_y)}</g>
+        <!-- Glass body — no stroke to avoid horizontal line across neck opening -->
+        <path d="${vp}" fill="rgba(140,178,216,0.26)" stroke="none"/>
         <!-- Vertical ribs -->
         <g clip-path="url(#${cid})" fill="none">${ribs}${valleys}</g>
         <!-- 3D depth gradient -->
-        <rect clip-path="url(#${cid})" x="0" y="0" width="80" height="104" fill="url(#${bg})"/>
+        <rect clip-path="url(#${cid})" x="0" y="0" width="80" height="130" fill="url(#${bg})"/>
         <!-- Radial light source — upper-left highlight -->
-        <rect clip-path="url(#${cid})" x="0" y="0" width="80" height="104" fill="url(#${rg})"/>
-        <!-- Shoulder ring — top rim of the wide body cylinder -->
-        <ellipse cx="40" cy="45" rx="32" ry="5"
-          fill="rgba(195,222,242,0.25)" stroke="rgba(255,255,255,0.55)" stroke-width="1.5"/>
-        <!-- Inner ledge — neck base visible inside body -->
-        <ellipse clip-path="url(#${cid})" cx="40" cy="45" rx="16" ry="2.5"
-          fill="rgba(195,222,242,0.18)" stroke="rgba(255,255,255,0.32)" stroke-width="1.0"/>
-        <!-- Neck opening rim -->
-        <ellipse cx="40" cy="4" rx="16" ry="3"
-          fill="rgba(195,222,242,0.38)" stroke="rgba(255,255,255,0.60)" stroke-width="1.4"/>
-        <!-- Left edge highlights -->
-        <polygon clip-path="url(#${cid})" points="24,4 30,4 30,45 24,45"   fill="rgba(255,255,255,0.42)"/>
-        <polygon clip-path="url(#${cid})" points="8,45 14,45 14,97 8,97"   fill="rgba(255,255,255,0.38)"/>
-        <!-- Right edge shadows -->
-        <polygon clip-path="url(#${cid})" points="50,4 56,4 56,45 50,45"   fill="rgba(10,40,75,0.18)"/>
-        <polygon clip-path="url(#${cid})" points="66,45 72,45 72,97 66,97" fill="rgba(10,40,75,0.20)"/>
-        <!-- Flowers emerging from vase neck -->
-        ${render_vase_flowers(vase_flowers || [])}
+        <rect clip-path="url(#${cid})" x="0" y="0" width="80" height="130" fill="url(#${rg})"/>
+        <!-- Back half of the rim — flowers can cover this edge -->
+        <path d="M 4,4 A 36,4 0 0 1 76,4"
+          fill="none" stroke="rgba(255,255,255,0.48)" stroke-width="1.3"/>
+        <!-- Back half of the bottom base — stems can cover this edge inside the glass -->
+        <path d="M 4,120 A 36,4 0 0 1 76,120"
+          fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="1.0"/>
+        <!-- In-vase stems are clipped to the glass body -->
+        <g clip-path="url(#${cid})">${render_vase_stems(vase_flowers || [])}</g>
+        <!-- Flower heads and above-rim stems grow from the mouth -->
+        ${render_vase_flowers(vase_flowers || [], false)}
+        <!-- Left edge highlight -->
+        <polygon clip-path="url(#${cid})" points="4,4 11,4 11,120 4,120" fill="rgba(255,255,255,0.42)"/>
+        <!-- Right edge shadow -->
+        <polygon clip-path="url(#${cid})" points="69,4 76,4 76,120 69,120" fill="rgba(10,40,75,0.18)"/>
+        <!-- Front half of the bottom base — stays in front of the stems -->
+        <path d="M 4,120 A 36,4 0 0 0 76,120"
+          fill="none" stroke="rgba(255,255,255,0.46)" stroke-width="1.2"/>
+        <!-- Front half of the rim — stays in front of inserted stems -->
+        <path d="M 4,4 A 36,4 0 0 0 76,4"
+          fill="none" stroke="rgba(255,255,255,0.96)" stroke-width="1.4"/>
       </svg>
+    </div>
+    <div class="vase_btn_row">
+      <button class="vase_action_btn" data-action="clear_vase" data-user-id="${user_id}">Clean Slate</button>
+      <button class="vase_action_btn" data-action="shuffle_vase" data-user-id="${user_id}">Surprise Me</button>
+    </div>
     </div>
   `;
 }
@@ -1428,7 +1317,7 @@ function render_balance_actions(current_user, other_user, state) {
         data-user-id="${current_user.user_id}"
         data-target-id="pool"
       >
-        Return to Pool
+        Donate to Pool
       </button>
       <button
         class="mini_action_button"
@@ -1448,7 +1337,7 @@ function render_balance_actions(current_user, other_user, state) {
         data-action-type="undo_last_action"
         data-user-id="${current_user.user_id}"
       >
-        Undo Last Action
+        Undo
       </button>
     </div>
     ${show_message ? `<p class="balance_message">${state.ui_message}</p>` : ""}
@@ -1593,6 +1482,7 @@ function sync_reward_status(state, user, habit, current_week_start) {
     habit.is_reward_claimed = false;
     habit.earned_at = null;
     user.wish_balance = Math.max(0, user.wish_balance - habit.reward_value);
+    sync_vase_flowers_to_balance(user);
     user.total_earned = Math.max(0, user.total_earned - habit.reward_value);
     state.pool_balance += habit.reward_value;
   }
@@ -1639,6 +1529,7 @@ function give_to_other(from_user, to_user, state) {
   }
 
   from_user.wish_balance -= 1;
+  const removed_flowers = sync_vase_flowers_to_balance(from_user);
   to_user.wish_balance += 1;
   const transfer_icon = from_user.user_id === "s" ? "👸" : "🐷";
 
@@ -1647,7 +1538,8 @@ function give_to_other(from_user, to_user, state) {
     type: "give_to_other",
     from_user_id: from_user.user_id,
     to_user_id: to_user.user_id,
-    transfer_icon
+    transfer_icon,
+    removed_flowers
   };
 }
 
@@ -1662,11 +1554,13 @@ function return_to_pool(user, state) {
   }
 
   user.wish_balance -= 1;
+  const removed_flowers = sync_vase_flowers_to_balance(user);
   state.pool_balance += 1;
   state.pool_added_this_week += 1;
   state.last_action = {
     type: "return_to_pool",
-    user_id: user.user_id
+    user_id: user.user_id,
+    removed_flowers
   };
 }
 
@@ -1680,6 +1574,7 @@ function undo_last_action(state) {
 
     if (user && state.pool_balance > 0) {
       user.wish_balance += 1;
+      restore_vase_flowers(user, state.last_action.removed_flowers);
       state.pool_balance -= 1;
       state.pool_added_this_week = Math.max(0, state.pool_added_this_week - 1);
     }
@@ -1691,7 +1586,9 @@ function undo_last_action(state) {
 
     if (from_user && to_user && to_user.wish_balance > 0) {
       from_user.wish_balance += 1;
+      restore_vase_flowers(from_user, state.last_action.removed_flowers);
       to_user.wish_balance -= 1;
+      sync_vase_flowers_to_balance(to_user);
       const icon_index = to_user.weekly_transfer_icons.lastIndexOf(state.last_action.transfer_icon);
 
       if (icon_index > -1) {
