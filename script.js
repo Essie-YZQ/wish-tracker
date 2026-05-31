@@ -1070,9 +1070,10 @@ function get_vase_flower_layout(vase_flowers) {
     const base_y = n === 1 ? 120 : 120 - side_distance * 12 + stable_flower_jitter(id, i, 'base_y', 1.8);
     const rim_x  = n === 1 ? 40 : 8 + t * 64 + rim_jitter;
     const rim_y  = 4 + stable_flower_jitter(id, i, 'rim_y', 0.8);
-    const stem_lift = Math.max(0, Math.round(Math.pow(center_proximity, 1.7) * 20 + lift_jitter - side_distance * 8));
-    const angle  = Math.atan2(rim_x - base_x, base_y - rim_y) * 180 / Math.PI;
-    return { id, base_x, base_y, rim_x, rim_y, stem_lift, angle };
+    const stem_lift = Math.max(0, Math.round(Math.pow(center_proximity, 1.7) * 30 + lift_jitter - side_distance * 8));
+    const side_depth = Math.round(side_distance * 4);
+    const angle  = Math.atan2(rim_x - base_x, base_y - (rim_y + side_depth)) * 180 / Math.PI;
+    return { id, base_x, base_y, rim_x, rim_y, stem_lift, side_depth, angle };
   });
 }
 
@@ -1082,7 +1083,7 @@ function extend_flower_center_stem(svg_inner, stem_lift) {
   const match = svg_inner.match(center_stem_pattern);
   if (!match) return { inner: svg_inner, extended: false };
   const [, stem_top_y, stem_color, rest] = match;
-  const overlap_y = 60 + stem_lift;
+  const overlap_y = 56 + stem_lift;
   const extended_stem = `<line x1="18" y1="${overlap_y}" x2="18" y2="${stem_top_y}" stroke="${stem_color}" stroke-width="1.35"${rest}/>`;
   const visible_stem_overlay = `<line x1="18" y1="${overlap_y}" x2="18" y2="${stem_top_y}" stroke="${stem_color}" stroke-width="1.35" stroke-linecap="round"/>`;
   const extended_inner = svg_inner.replace(center_stem_pattern, extended_stem);
@@ -1095,26 +1096,27 @@ function extend_flower_center_stem(svg_inner, stem_lift) {
 function render_vase_flowers(vase_flowers, include_base_stems = true) {
   if (!vase_flowers || vase_flowers.length === 0) return '';
   const s = 1.4;
-  return get_vase_flower_layout(vase_flowers).map(({ id, base_x, base_y, rim_x, rim_y, stem_lift, angle }) => {
+  return get_vase_flower_layout(vase_flowers).map(({ id, base_x, base_y, rim_x, rim_y, stem_lift, side_depth, angle }) => {
+    const effective_y = rim_y + side_depth;
     let inner = (FLOWER_SVG[id] || '').replace(/^<svg[^>]*>\s*/, '').replace(/\s*<\/svg>\s*$/, '');
-    const stem  = `<line x1="${base_x.toFixed(1)}" y1="${base_y.toFixed(1)}" x2="${rim_x.toFixed(1)}" y2="${rim_y.toFixed(1)}" stroke="#4a7c4e" stroke-width="1.35" opacity="0.96"/>`;
+    const stem  = `<line x1="${base_x.toFixed(1)}" y1="${base_y.toFixed(1)}" x2="${rim_x.toFixed(1)}" y2="${effective_y.toFixed(1)}" stroke="#4a7c4e" stroke-width="1.35" opacity="0.96"/>`;
     const center_stem = extend_flower_center_stem(inner, stem_lift);
     inner = center_stem.inner;
     let extension = stem_lift > 0
-      ? `<line x1="18" y1="${60 + stem_lift}" x2="18" y2="56" stroke="#4a7c4e" stroke-width="1.35" opacity="0.96" stroke-linecap="round"/>`
+      ? `<line x1="18" y1="${56 + stem_lift}" x2="18" y2="56" stroke="#4a7c4e" stroke-width="1.35" opacity="0.96" stroke-linecap="round"/>`
       : '';
     if (center_stem.extended) {
       extension = '';
     }
-    const flower = `<g transform="translate(${rim_x.toFixed(1)},${rim_y.toFixed(1)}) rotate(${angle.toFixed(1)}) scale(${s}) translate(-18,${-(56 + stem_lift)})">${extension}${inner}</g>`;
+    const flower = `<g transform="translate(${rim_x.toFixed(1)},${effective_y.toFixed(1)}) rotate(${angle.toFixed(1)}) scale(${s}) translate(-18,${-(56 + stem_lift)})">${extension}${inner}</g>`;
     return `${include_base_stems ? stem : ''}${flower}`;
   }).join('\n');
 }
 
 function render_vase_stems(vase_flowers) {
   if (!vase_flowers || vase_flowers.length === 0) return '';
-  return get_vase_flower_layout(vase_flowers).map(({ base_x, base_y, rim_x, rim_y }) => {
-    return `<line x1="${base_x.toFixed(1)}" y1="${base_y.toFixed(1)}" x2="${rim_x.toFixed(1)}" y2="${rim_y.toFixed(1)}" stroke="#4a7c4e" stroke-width="1.35" opacity="0.92"/>`;
+  return get_vase_flower_layout(vase_flowers).map(({ base_x, base_y, rim_x, rim_y, side_depth }) => {
+    return `<line x1="${base_x.toFixed(1)}" y1="${base_y.toFixed(1)}" x2="${rim_x.toFixed(1)}" y2="${(rim_y + side_depth).toFixed(1)}" stroke="#4a7c4e" stroke-width="1.35" opacity="0.92"/>`;
   }).join('\n');
 }
 
@@ -1220,16 +1222,16 @@ function render_crystal_glass(user_id, wish_balance, vase_flowers) {
           fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="1.0"/>
         <!-- In-vase stems are clipped to the glass body -->
         <g clip-path="url(#${cid})">${render_vase_stems(vase_flowers || [])}</g>
-        <!-- Flower heads and above-rim stems grow from the mouth -->
-        ${render_vase_flowers(vase_flowers || [], false)}
         <!-- Left edge highlight -->
         <polygon clip-path="url(#${cid})" points="4,4 11,4 11,120 4,120" fill="rgba(255,255,255,0.42)"/>
         <!-- Right edge shadow -->
         <polygon clip-path="url(#${cid})" points="69,4 76,4 76,120 69,120" fill="rgba(10,40,75,0.18)"/>
-        <!-- Front half of the bottom base — stays in front of the stems -->
+        <!-- Front half of the bottom base -->
         <path d="M 4,120 A 36,4 0 0 0 76,120"
           fill="none" stroke="rgba(255,255,255,0.46)" stroke-width="1.2"/>
-        <!-- Front half of the rim — stays in front of inserted stems -->
+        <!-- Flowers: stems cover the back rim arc, flower heads above vase -->
+        ${render_vase_flowers(vase_flowers || [], false)}
+        <!-- Front half of the rim — rendered last to cover stems at vase mouth, creating depth -->
         <path d="M 4,4 A 36,4 0 0 0 76,4"
           fill="none" stroke="rgba(255,255,255,0.96)" stroke-width="1.4"/>
       </svg>
