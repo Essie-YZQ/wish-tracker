@@ -16,9 +16,11 @@ Read `AGENTS_PLAYBOOK.md` first before using this file.
 ## Current Project State
 
 - App deployed and working: https://essie-yzq.github.io/wish-tracker/
+- Current asset versions: `style.css?v=14`, `script.js?v=4` (pushed 2026-05-31).
 - Firebase Firestore syncs balances, habit status, weekly sources, vase flowers, and unlocked flowers in real-time.
 - 24 unique SVG flowers with picker; crystal vase with bell-curve fan arrangement.
-- Mystery Seed feature fully implemented: spend 10 wishes to permanently unlock a random flower.
+- Mystery Seed feature fully implemented and live: spend 10 wishes to permanently unlock a random flower.
+- Both users start with only `snowdrop` unlocked (live data reset to this state 2026-05-31).
 
 ---
 
@@ -47,6 +49,7 @@ Read `AGENTS_PLAYBOOK.md` first before using this file.
 
 - `script.js` — Mystery Seed state, Firebase sync, draw logic, reveal animation, picker locked/toast, shuffle fix, button label
 - `style.css` — locked flower filter, seed dialog, reveal overlay/animation, toast style
+- `index.html` — version bump (style.css v14, script.js v4)
 - `PROJECT_STATUS.md` — updated
 
 ---
