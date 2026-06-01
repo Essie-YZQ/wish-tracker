@@ -62,6 +62,14 @@ async function loadFromFirebase() {
       state.users[1].vase_flowers = data.kkVaseFlowers;
     }
 
+    if (Array.isArray(data.sUnlockedFlowers) && data.sUnlockedFlowers.length > 0) {
+      state.users[0].unlocked_flowers = data.sUnlockedFlowers;
+    }
+
+    if (Array.isArray(data.kkUnlockedFlowers) && data.kkUnlockedFlowers.length > 0) {
+      state.users[1].unlocked_flowers = data.kkUnlockedFlowers;
+    }
+
     applyHabitStatus(state.users[0].habits, data.sHabitStatus);
     applyHabitStatus(state.users[1].habits, data.kkHabitStatus);
     state.users.forEach(sync_vase_flowers_to_balance);
@@ -115,6 +123,14 @@ function subscribeToFirebaseBalances() {
       state.users[1].vase_flowers = data.kkVaseFlowers;
     }
 
+    if (Array.isArray(data.sUnlockedFlowers) && data.sUnlockedFlowers.length > 0) {
+      state.users[0].unlocked_flowers = data.sUnlockedFlowers;
+    }
+
+    if (Array.isArray(data.kkUnlockedFlowers) && data.kkUnlockedFlowers.length > 0) {
+      state.users[1].unlocked_flowers = data.kkUnlockedFlowers;
+    }
+
     applyHabitStatus(state.users[0].habits, data.sHabitStatus);
     applyHabitStatus(state.users[1].habits, data.kkHabitStatus);
     state.users.forEach(sync_vase_flowers_to_balance);
@@ -156,6 +172,14 @@ async function getLatestStateFromFirebase() {
       state.users[1].vase_flowers = data.kkVaseFlowers;
     }
 
+    if (Array.isArray(data.sUnlockedFlowers) && data.sUnlockedFlowers.length > 0) {
+      state.users[0].unlocked_flowers = data.sUnlockedFlowers;
+    }
+
+    if (Array.isArray(data.kkUnlockedFlowers) && data.kkUnlockedFlowers.length > 0) {
+      state.users[1].unlocked_flowers = data.kkUnlockedFlowers;
+    }
+
     state.users.forEach(sync_vase_flowers_to_balance);
   }
 
@@ -188,7 +212,9 @@ async function saveBalancesToFirebase(state, habit_user_id = null) {
     sWeeklySources: sSources,
     kkWeeklySources: kkSources,
     sVaseFlowers: state.users[0].vase_flowers || [],
-    kkVaseFlowers: state.users[1].vase_flowers || []
+    kkVaseFlowers: state.users[1].vase_flowers || [],
+    sUnlockedFlowers: state.users[0].unlocked_flowers || ['snowdrop'],
+    kkUnlockedFlowers: state.users[1].unlocked_flowers || ['snowdrop']
   };
 
   if (habit_user_id) {
@@ -335,6 +361,7 @@ function create_user_state(user, week_start_date) {
     weekly_transfer_icons: [],
     weekly_source_icons: [],
     vase_flowers: [],
+    unlocked_flowers: ['snowdrop'],
     habits: user.habits.map((habit) => create_habit_state(habit, week_start_date))
   };
 }
@@ -375,6 +402,10 @@ function handle_click(event) {
   const reset_button   = event.target.closest("#reset_demo_button");
 
   if (flower_button) {
+    if (flower_button.dataset.seedLocked) {
+      show_seed_locked_toast();
+      return;
+    }
     pick_flower(flower_button.dataset.userId, flower_button.dataset.flowerId);
     return;
   }
@@ -426,9 +457,12 @@ async function shuffle_vase(user_id) {
   const state = get_state();
   const user  = state.users.find(u => u.user_id === user_id);
   if (!user || user.wish_balance === 0) return;
+  const pool = user.unlocked_flowers && user.unlocked_flowers.length > 0
+    ? user.unlocked_flowers
+    : ['snowdrop'];
   const count = user.wish_balance;
   user.vase_flowers = Array.from({ length: count }, () =>
-    FLOWER_LIST[Math.floor(Math.random() * FLOWER_LIST.length)]
+    pool[Math.floor(Math.random() * pool.length)]
   );
   save_state(state);
   render_summary(state);
@@ -542,6 +576,8 @@ function normalize_balances(state) {
     user.total_spent = Math.max(0, Number(user.total_spent) || 0);
     user.weekly_transfer_icons = Array.isArray(user.weekly_transfer_icons) ? user.weekly_transfer_icons : [];
     user.vase_flowers = Array.isArray(user.vase_flowers) ? user.vase_flowers : [];
+    user.unlocked_flowers = Array.isArray(user.unlocked_flowers) && user.unlocked_flowers.length > 0
+      ? user.unlocked_flowers : ['snowdrop'];
     sync_vase_flowers_to_balance(user);
   });
 
@@ -589,7 +625,7 @@ function render_summary(state) {
       <p class="summary_label">${person_a.name} Wishes</p>
       <div class="card_vase_area">
         <div class="card_vase_top">
-          ${render_flower_picker(person_a.user_id, person_a.wish_balance, a_flowers)}
+          ${render_flower_picker(person_a.user_id, person_a.wish_balance, a_flowers, person_a.unlocked_flowers)}
           ${render_crystal_glass(person_a.user_id, person_a.wish_balance, a_flowers)}
         </div>
       </div>
@@ -603,7 +639,7 @@ function render_summary(state) {
     <article class="summary_card user_card user_card_reverse">
       <p class="summary_label">${person_b.name} Wishes</p>
       <div class="card_vase_area">
-        ${render_flower_picker(person_b.user_id, person_b.wish_balance, b_flowers)}
+        ${render_flower_picker(person_b.user_id, person_b.wish_balance, b_flowers, person_b.unlocked_flowers)}
         ${render_crystal_glass(person_b.user_id, person_b.wish_balance, b_flowers)}
       </div>
       <div class="user_card_row">
@@ -1120,13 +1156,20 @@ function render_vase_stems(vase_flowers) {
   }).join('\n');
 }
 
-function render_flower_picker(user_id, wish_balance, vase_flowers) {
+function render_flower_picker(user_id, wish_balance, vase_flowers, unlocked_flowers) {
   const count = (vase_flowers || []).length;
-  const locked = wish_balance === 0 || count >= wish_balance;
+  const vase_full = wish_balance === 0 || count >= wish_balance;
+  const unlocked = new Set(unlocked_flowers || ['snowdrop']);
   return `<div class="flower_picker" data-user-id="${user_id}">
-    ${FLOWER_LIST.map(id => `<button class="flower_btn${locked ? ' flower_btn_locked' : ''}"
-      data-action="pick_flower" data-user-id="${user_id}" data-flower-id="${id}"
-      ${locked ? 'disabled' : ''}>${FLOWER_SVG[id]}</button>`).join('')}
+    ${FLOWER_LIST.map(id => {
+      const is_unlocked = unlocked.has(id);
+      const truly_disabled = vase_full && is_unlocked;
+      return `<button class="flower_btn${truly_disabled ? ' flower_btn_locked' : ''}${!is_unlocked ? ' flower_btn_seed_locked' : ''}"
+        data-action="pick_flower" data-user-id="${user_id}" data-flower-id="${id}"
+        ${truly_disabled ? 'disabled' : ''}
+        ${!is_unlocked ? 'data-seed-locked="true"' : ''}
+        >${FLOWER_SVG[id]}</button>`;
+    }).join('')}
   </div>`;
 }
 
@@ -1244,6 +1287,21 @@ function render_crystal_glass(user_id, wish_balance, vase_flowers) {
   `;
 }
 
+function render_mystery_seed_button(user) {
+  const emoji = user.user_id === 's' ? '🐑' : '🐷';
+  const all_unlocked = user.unlocked_flowers && user.unlocked_flowers.length >= FLOWER_LIST.length;
+  const disabled = user.wish_balance < 10 || all_unlocked;
+  const label = all_unlocked ? 'All Bloomed!' : `${emoji} Plant a Seed`;
+  return `<button
+    class="mini_action_button mystery_seed_btn${disabled ? ' mystery_seed_btn_disabled' : ''}"
+    type="button"
+    data-action="wish_action"
+    data-action-type="mystery_seed_draw"
+    data-user-id="${user.user_id}"
+    ${disabled ? 'disabled' : ''}
+  >${label}</button>`;
+}
+
 function render_pool_card(state) {
   const max_pool = 30;
   const water_level = Math.min(100, (state.pool_balance / max_pool) * 100);
@@ -1324,6 +1382,10 @@ function render_pool_card(state) {
       </div>
       <div class="summary_value">${state.pool_balance}</div>
       <div class="pool_bottom_spacer"></div>
+      <div class="mystery_seed_actions">
+        ${render_mystery_seed_button(state.users[0])}
+        ${render_mystery_seed_button(state.users[1])}
+      </div>
     </article>
   `;
 }
@@ -1533,6 +1595,9 @@ async function perform_balance_action(action_type, action_button) {
     case "undo_last_action":
       undo_last_action(state);
       break;
+    case "mystery_seed_draw":
+      show_mystery_seed_dialog(current_user_id);
+      return;
     default:
       return;
   }
@@ -1622,6 +1687,108 @@ function undo_last_action(state) {
   }
 
   state.last_action = null;
+}
+
+function show_mystery_seed_dialog(user_id) {
+  const existing = document.getElementById('mystery_seed_dialog');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'mystery_seed_dialog';
+  overlay.className = 'seed_dialog_overlay';
+  overlay.innerHTML = `
+    <div class="seed_dialog_box">
+      <p class="seed_dialog_title">Plant a Mystery Seed?</p>
+      <p class="seed_dialog_sub">Spend 10 Wishes and discover what blooms!</p>
+      <div class="seed_dialog_btns">
+        <button class="seed_dialog_confirm" id="seed_confirm_btn">🌱 Plant It</button>
+        <button class="seed_dialog_cancel" id="seed_cancel_btn">🤔 Maybe Later</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('seed_confirm_btn').onclick = () => {
+    overlay.remove();
+    perform_mystery_seed_draw(user_id);
+  };
+  document.getElementById('seed_cancel_btn').onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+}
+
+async function perform_mystery_seed_draw(user_id) {
+  const state = await getLatestStateFromFirebase();
+  const user = state.users.find(u => u.user_id === user_id);
+  if (!user || user.wish_balance < 10) return;
+
+  const locked = FLOWER_LIST.filter(id => !user.unlocked_flowers.includes(id));
+  if (locked.length === 0) return;
+
+  const new_flower = locked[Math.floor(Math.random() * locked.length)];
+  user.wish_balance -= 10;
+  user.unlocked_flowers = [...user.unlocked_flowers, new_flower];
+  state.last_action = null;
+
+  save_state(state);
+  await saveBalancesToFirebase(state);
+  render_app();
+  show_seed_reveal(new_flower, user.name);
+}
+
+function flower_id_to_name(id) {
+  return id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function show_seed_reveal(flower_id, user_name) {
+  const overlay = document.createElement('div');
+  overlay.className = 'seed_reveal_overlay';
+  overlay.innerHTML = `
+    <div class="seed_reveal_box">
+      <div class="seed_reveal_stage">
+        <div class="seed_reveal_emoji" id="seed_emoji">🌱</div>
+        <div class="seed_reveal_burst" id="seed_burst"></div>
+        <div class="seed_reveal_flower" id="seed_flower" style="display:none">${FLOWER_SVG[flower_id] || ''}</div>
+      </div>
+      <p class="seed_reveal_label" id="seed_label"></p>
+      <p class="seed_reveal_name" id="seed_name"></p>
+      <button class="seed_reveal_close" id="seed_close" style="display:none">✦ Continue</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const emoji_el = overlay.querySelector('#seed_emoji');
+  const burst_el = overlay.querySelector('#seed_burst');
+  const flower_el = overlay.querySelector('#seed_flower');
+  const label_el = overlay.querySelector('#seed_label');
+  const name_el = overlay.querySelector('#seed_name');
+  const close_btn = overlay.querySelector('#seed_close');
+
+  setTimeout(() => { emoji_el.textContent = '🌿'; emoji_el.style.transform = 'scale(1.3)'; }, 700);
+  setTimeout(() => { emoji_el.style.opacity = '0'; }, 1400);
+  setTimeout(() => {
+    emoji_el.style.display = 'none';
+    burst_el.classList.add('seed_burst_active');
+  }, 1700);
+  setTimeout(() => {
+    burst_el.classList.remove('seed_burst_active');
+    flower_el.style.display = 'flex';
+    flower_el.classList.add('seed_flower_appear');
+    label_el.textContent = 'New Flower Unlocked!';
+    name_el.textContent = flower_id_to_name(flower_id);
+  }, 2300);
+  setTimeout(() => { close_btn.style.display = 'block'; }, 3200);
+
+  close_btn.onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay && close_btn.style.display !== 'none') overlay.remove(); };
+}
+
+function show_seed_locked_toast() {
+  const existing = document.getElementById('seed_locked_toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'seed_locked_toast';
+  toast.className = 'seed_locked_toast';
+  toast.textContent = 'Draw a Mystery Seed to unlock!';
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2200);
 }
 
 function show_no_wishes_message(state, user_id) {
