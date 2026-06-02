@@ -717,8 +717,8 @@ h2 {
 }
 
 .user_card .mini_action_button {
-  padding: 6px 10px;
-  font-size: 0.70rem;
+  padding: 6px 6px;
+  font-size: 0.68rem;
   flex: 1;
   white-space: nowrap;
 }

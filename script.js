@@ -1402,9 +1402,14 @@ function render_balance_actions(current_user, other_user, state) {
         data-action-type="return_to_pool"
         data-user-id="${current_user.user_id}"
         data-target-id="pool"
-      >
-        Donate to Pool
-      </button>
+      >Donate</button>
+      <button
+        class="mini_action_button"
+        type="button"
+        data-action="wish_action"
+        data-action-type="withdraw_from_pool"
+        data-user-id="${current_user.user_id}"
+      >Withdraw</button>
       <button
         class="mini_action_button"
         type="button"
@@ -1413,18 +1418,14 @@ function render_balance_actions(current_user, other_user, state) {
         data-user-id="${current_user.user_id}"
         data-other-user-id="${other_user.user_id}"
         data-target-id="${other_user.user_id}"
-      >
-        Give to Other
-      </button>
+      >Give to ${other_user.name}</button>
       <button
         class="mini_action_button mini_action_button_secondary"
         type="button"
         data-action="wish_action"
         data-action-type="undo_last_action"
         data-user-id="${current_user.user_id}"
-      >
-        Undo
-      </button>
+      >Undo</button>
     </div>
     ${show_message ? `<p class="balance_message">${state.ui_message}</p>` : ""}
   `;
@@ -1592,6 +1593,9 @@ async function perform_balance_action(action_type, action_button) {
     case "return_to_pool":
       return_to_pool(current_user, state);
       break;
+    case "withdraw_from_pool":
+      withdraw_from_pool(current_user, state);
+      break;
     case "undo_last_action":
       undo_last_action(state);
       break;
@@ -1653,6 +1657,20 @@ function return_to_pool(user, state) {
   };
 }
 
+function withdraw_from_pool(user, state) {
+  if (!user) return;
+  if (state.pool_balance < 1) {
+    show_no_wishes_message(state, user.user_id);
+    return;
+  }
+  state.pool_balance -= 1;
+  user.wish_balance += 1;
+  state.last_action = {
+    type: "withdraw_from_pool",
+    user_id: user.user_id,
+  };
+}
+
 function undo_last_action(state) {
   if (!state.last_action) {
     return;
@@ -1666,6 +1684,15 @@ function undo_last_action(state) {
       restore_vase_flowers(user, state.last_action.removed_flowers);
       state.pool_balance -= 1;
       state.pool_added_this_week = Math.max(0, state.pool_added_this_week - 1);
+    }
+  }
+
+  if (state.last_action.type === "withdraw_from_pool") {
+    const user = state.users.find((item) => item.user_id === state.last_action.user_id);
+    if (user && user.wish_balance > 0) {
+      user.wish_balance -= 1;
+      sync_vase_flowers_to_balance(user);
+      state.pool_balance += 1;
     }
   }
 
