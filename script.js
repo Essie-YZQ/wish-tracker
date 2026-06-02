@@ -46,11 +46,14 @@ async function loadFromFirebase() {
     }
 
 
-    if (Array.isArray(data.sWeeklySources)) {
-      state.users[0].weekly_source_icons = data.sWeeklySources;
-    }   
+    const current_week = get_week_start_date(new Date());
+    const sources_are_current = data.weekStart === current_week;
 
-    if (Array.isArray(data.kkWeeklySources)) {
+    if (sources_are_current && Array.isArray(data.sWeeklySources)) {
+      state.users[0].weekly_source_icons = data.sWeeklySources;
+    }
+
+    if (sources_are_current && Array.isArray(data.kkWeeklySources)) {
       state.users[1].weekly_source_icons = data.kkWeeklySources;
     }
 
@@ -107,11 +110,14 @@ function subscribeToFirebaseBalances() {
       state.pool_balance = data.poolBalance;
     }
 
-    if (Array.isArray(data.sWeeklySources)) {
+    const current_week = get_week_start_date(new Date());
+    const sources_are_current = data.weekStart === current_week;
+
+    if (sources_are_current && Array.isArray(data.sWeeklySources)) {
       state.users[0].weekly_source_icons = data.sWeeklySources;
     }
 
-    if (Array.isArray(data.kkWeeklySources)) {
+    if (sources_are_current && Array.isArray(data.kkWeeklySources)) {
       state.users[1].weekly_source_icons = data.kkWeeklySources;
     }
 
@@ -209,6 +215,7 @@ async function saveBalancesToFirebase(state, habit_user_id = null) {
     sBalance: state.users[0].wish_balance,
     kkBalance: state.users[1].wish_balance,
     poolBalance: state.pool_balance,
+    weekStart: state.week_start_date,
     sWeeklySources: sSources,
     kkWeeklySources: kkSources,
     sVaseFlowers: state.users[0].vase_flowers || [],
