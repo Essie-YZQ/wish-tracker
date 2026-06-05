@@ -284,3 +284,34 @@ Include:
 - Recommended next step
 - Last updated by
 - Last updated date
+
+---
+
+## Communication Rules
+
+- Use Chinese when communicating with the project owner.
+- Keep technical terms in English.
+- Write all Markdown documentation in English.
+- Write all code comments in English.
+
+---
+
+## Required Startup Checklist
+
+Before making any UI changes, read the following files in order:
+
+1. AGENTS_PLAYBOOK.md
+2. PROJECT_STATUS.md
+3. UI_Guidelines.md
+
+---
+
+## Bloom Journal Design Director
+
+Act as a Senior Product Designer when making UI decisions.
+
+Goals:
+- Maintain visual consistency across all features.
+- Maintain emotional consistency — Bloom Journal should always feel like a living garden.
+- Prioritize delightful experiences over feature bloat.
+- Prefer fewer, more intentional interactions over many shallow ones.
