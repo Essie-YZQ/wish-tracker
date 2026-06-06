@@ -9,16 +9,17 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- Dog presence system is implemented but visual polish may need further tuning.
-- White dog visibility on light card background is addressed with CSS drop-shadow.
-- New approved idle puppy designs are now the master visual references for future puppy assets.
+- Puppy Companion System shipped to production.
+- Approved idle puppy designs are the master visual references for future puppy assets.
+- Next work should focus on visual QA and optional placement expansion beyond S / Kang / Pool cards.
 
 ---
 
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=16` (local only, not yet pushed)
+- Asset versions: `style.css?v=23`, `script.js?v=16` (pushed to production)
+- Latest production commit: `3129fc8 Add puppy companion system assets`
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
@@ -176,6 +177,17 @@ sHabitStatus, kkHabitStatus        objects
 history                            array
 ```
 
+### Production Flower State Reset (2026-06-06)
+
+Firebase `shared_state/main` flower fields were reset after testing:
+
+- `sUnlockedFlowers`: `['snowdrop', 'gladiolus']`
+- `kkUnlockedFlowers`: `['snowdrop', 'water_lily']`
+- `sVaseFlowers`: `[]`
+- `kkVaseFlowers`: `[]`
+
+Repository files do not store test unlock state. Flower unlock progress persists through browser `localStorage` and Firebase; production shared state was cleaned directly in Firebase.
+
 ---
 
 ## Known Issues / Limitations
@@ -201,9 +213,9 @@ history                            array
 
 ## Pending Work / Open Questions
 
-- Visual check: open Live Server and verify approved puppies display on S / KK / pool cards.
+- Visual check production puppy display on S / Kang / Pool cards.
 - Consider: refine transparent edges on the new basic pose assets, reducing cream halo without removing white puppy body.
-- Visual check: verify hourly movement and Puppy Event companion transfer behavior.
+- Visual check hourly movement and Puppy Event companion transfer behavior.
 - Future UI expansion: add dog render slots beyond S/KK/pool, such as weekly section, vase/flower area, empty decorative spaces, and outside-card positions.
 - Future puppy moments expansion requested: kissing/hugging variations, more walking together, and additional scene-like interactions.
 
@@ -211,9 +223,8 @@ history                            array
 
 ## Recommended Next Step
 
-- Open Live Server (`http://127.0.0.1:5500`) and do a visual check of the dog system.
-- Check `script.js?v=16` behavior: Puppy Event overlay count, 24h companion ownership, and hourly movement.
-- Push to GitHub when satisfied. Remember to update version numbers if any more changes are made before push.
+- Open production URL and visually check `script.js?v=16` behavior: Puppy Event overlay count, 24h companion ownership, and hourly movement.
+- If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
 
 ---
@@ -233,5 +244,5 @@ history                            array
 
 ## Last Updated
 
-- Last updated by: Claude (claude-sonnet-4-6)
-- Last updated date: 2026-06-05
+- Last updated by: Codex
+- Last updated date: 2026-06-06
