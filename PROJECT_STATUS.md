@@ -9,19 +9,19 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- No open tasks. App is stable and deployed.
+- Dog presence system is implemented but visual polish may need further tuning.
+- White dog visibility on light card background is addressed with CSS drop-shadow.
+- New approved idle puppy designs are now the master visual references for future puppy assets.
 
 ---
 
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=15`, `script.js?v=6` (pushed 2026-06-01)
+- Asset versions: `style.css?v=23`, `script.js?v=16` (local only, not yet pushed)
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
-- S has 8 habits, KK has 5 habits. Each habit earns 1 wish when weekly target is met.
-- Total wish pool: 30 (sBalance + kkBalance + poolBalance = 30 always)
 
 ---
 
@@ -34,83 +34,132 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 - **Withdraw**: take 1 wish from Pool to personal balance (undoable).
 - **Give to KK / Give to S**: transfer 1 wish to the other user (undoable).
 - **Undo**: reverses the last Donate, Withdraw, or Give action. One level only.
-- Undo is blocked after a Mystery Seed draw (last_action = null after draw).
 
 ### Vase & Flower System
 - Crystal vase SVG with bell-curve fan arrangement of flowers.
-- 24 unique flower SVGs (36×60 viewBox, stem at y=56, head at y=0–25).
+- 24 unique flower SVGs.
 - Flower picker: 3-column grid, 8 rows.
 - Vase water level reflects wish balance as a percentage of 30.
-- "Clean Slate" button: clears all flowers from vase.
-- "Surprise Me" button: fills vase randomly from **unlocked flowers only** (duplicates allowed).
-- Vase rim has correct 3D layering: stems behind front rim arc.
-- Pool card uses a decanter (trapezoid shape) instead of a vase.
-- Large breathing snowflake on decanter bottom-left, anti-phased with stopper snowflake.
+- "Clean Slate" and "Surprise Me" buttons.
+- Pool card uses a decanter (trapezoid shape).
 
-### Mystery Seed Feature (2026-05-31)
-- Spend 10 **personal** wishes to permanently unlock one new flower (random, no duplicates).
-- Pool increases by 10 as a side effect (natural encouragement to donate to pool).
-- Buttons: `🐑 Plant a Seed` (S) and `🐷 Plant a Seed` (KK) in the Pool card.
-- Disabled when: personal balance < 10, or all 24 flowers already unlocked.
-- When all unlocked: button shows "All Bloomed!" instead.
-- Confirmation dialog: "Plant a Mystery Seed? / Spend 10 Wishes and discover what blooms!" with 🌱 Plant It / 🤔 Maybe Later.
-- Reveal animation: full-screen overlay — 🌱 → 🌿 → radial burst → flower SVG scales in → "New Flower Unlocked!" + English flower name → Continue button.
-- Starter: each user begins with only `snowdrop` unlocked.
-- S and KK have independent unlock progress.
-- Firebase fields: `sUnlockedFlowers`, `kkUnlockedFlowers` (array of flower IDs).
-- `normalize_balances()` fallback: if field missing, initializes to `['snowdrop']`.
+### Mystery Seed / Wish Draw Feature
+- Cost: **2 personal wishes** (changed from 10).
+- Success probability: **20%** (hidden from user — NOT displayed anywhere).
+- On success: unlock a random new flower (existing reveal animation kept).
+- On puppy event: puppy companion appears (see Dog System below).
+- Confirmation modal: randomizes title, description, button pairs from copy pools.
+- "2 wishes" cost embedded naturally in description text — no separate cost line.
+- Main button text is FIXED: `🌱 Plant the Seed` (never randomized).
+- Success message: randomized from 10-option pool (`SEED_SUCCESS_MSGS`).
+- Dog companion message: randomized from 10-option pool (`SEED_DOG_MSGS`), all warm/positive framing.
 
-### Flower Picker Locked State
-- Locked flowers: CSS `filter: grayscale(0.72) brightness(0.68) opacity(0.52)` — faint color visible.
-- Locked flowers are **clickable** (not `disabled`) — clicking shows toast: "Draw a Mystery Seed to unlock!"
-- Toast: fixed bottom-center, fades out after 2.2s, styled as dark pill.
-- Unlocked flowers: full color, clickable to insert into vase.
-- Vase-full unlocked flowers: `disabled` attribute, cannot be inserted.
+### Dog Presence System (2026-06-05)
+
+#### Character assets
+- **Master idle designs (approved 2026-06-05)**:
+  - `images/white-puppy-idle.png` = official S / White Puppy design.
+  - `images/yellow-puppy-idle.png` = official Kang / Yellow Puppy design.
+  - Do NOT redesign or reinterpret these characters. Future assets should match these exact designs, proportions, face, ears, outline style, and colors.
+  - White puppy transparency rule: preserve white body, black outline, and purple collar. If clean background removal risks removing the white body, keep a soft cream background remnant instead.
+  - Yellow puppy transparency rule: preserve yellow body, black outline, and green ball.
+- **Basic pose preview pack (2026-06-05)**:
+  - Preview sheet: `images/puppy_pose_previews/pose-sheet-basic-8.png`.
+  - Review sheet: `images/puppy_pose_previews/review-sheet-basic-8.png`.
+  - Confirmed by owner as visually correct: white run, white sleep, white hold flower, white look at user, yellow run, yellow sleep, yellow hold ball, yellow look at user.
+- **Basic pose transparent assets (integrated into app 2026-06-05)**:
+  - Directory: `images/puppy_pose_assets/`.
+  - Files: `white-puppy-run.png`, `white-puppy-sleep.png`, `white-puppy-hold-flower.png`, `white-puppy-look-user.png`, `yellow-puppy-run.png`, `yellow-puppy-sleep.png`, `yellow-puppy-hold-ball.png`, `yellow-puppy-look-user.png`.
+  - Review sheet: `images/puppy_pose_assets/review-sheet-transparent-basic-8.png`.
+  - These are conservative RGBA cutouts with soft cream safety halo to avoid losing puppy body pixels, especially on the white puppy.
+  - `script.js` now uses `DOG_ASSETS` to map dog colors/poses to these approved assets.
+  - Roaming single-dog poses use idle/sleep/hold flower or ball/look at user. Entrance animation swaps temporarily to run pose.
+  - Together mode now uses single together assets from `DOG_TOGETHER_ASSETS` rather than rendering two separate dog images.
+- **Puppy Moments Pack 1 preview (2026-06-05, not yet integrated)**:
+  - Directory: `images/puppy_moments_previews/`.
+  - Full sheet: `images/puppy_moments_previews/pose-sheet-moments-12.png`.
+  - Review sheet: `images/puppy_moments_previews/review-sheet-moments-12.png`.
+  - Single-dog previews: `preview-white-violin.png`, `preview-white-stretch.png`, `preview-white-lazy-nap.png`, `preview-white-riverside-walk.png`, `preview-yellow-yummy-time.png`, `preview-yellow-snack-attack.png`, `preview-yellow-zoomies.png`, `preview-yellow-love-you.png`.
+  - Together previews: `preview-together-high-five.png`, `preview-together-cuddle.png`, `preview-together-walk.png`, `preview-together-movie-night.png`.
+  - These are soft-cream-background confirmation previews.
+- **Puppy Moments Pack 1 transparent assets (2026-06-06, integrated into roaming)**:
+  - Directory: `images/puppy_moments_assets/`.
+  - Review sheet: `images/puppy_moments_assets/review-sheet-transparent-moments-12.png`.
+  - Single-dog assets: `white-puppy-violin.png`, `white-puppy-stretch.png`, `white-puppy-lazy-nap.png`, `white-puppy-riverside-walk.png`, `yellow-puppy-yummy-time.png`, `yellow-puppy-snack-attack.png`, `yellow-puppy-zoomies.png`, `yellow-puppy-love-you.png`.
+  - Together assets: `together-high-five.png`, `together-cuddle.png`, `together-walk.png`, `together-movie-night.png`.
+  - All 12 single asset files are RGBA PNGs with real alpha.
+  - Current version uses a rounded soft cream safety patch with transparent corners, rather than tight cutouts. This prevents cropped heads/ears and avoids transparent holes in the white puppy body.
+  - Integrated through `DOG_ASSETS` for single-dog moments and `DOG_TOGETHER_ASSETS` for together moments.
+  - Together moments are rendered as one image that already contains exactly two puppies, not as two separate dog images.
+  - Roaming supports: white puppy alone, yellow puppy alone, white/yellow separated into two different cards, or one together image in one card.
+- **Legacy sprite-sheet extractions**:
+  - Older `s-*.png`, `k-*.png`, and `together-*.png` assets from the Claude extraction are no longer used and were deleted by the owner.
+  - Do not reintroduce the legacy extracted assets unless explicitly requested.
+- Source: `images/sprite_sheet.png` (1536×1024, keep this file for future re-extraction).
+
+#### Extraction script
+- The extraction logic lives in the session transcript. Key parameters:
+  - White dogs: `extract_dilation(cell, dark_thresh=70, dilation=4)`
+  - Yellow dogs: `extract_tolerance(cell, tolerance=42)`
+  - Column x-boundaries scaled from original 1402px image: `col_x = [int(v*(W/1402)) for v in [0,174,347,524,691,847,1033,1234,1402]]`
+  - Row y-boundaries for 1536×1024 image: s_row1=(55,215), s_row2=(375,505), k_row1=(570,705), k_row2=(820,955), t_row=(880,1020)
+
+#### Dog state machine (`dog_state` in script.js)
+- **Roaming mode** (default): dogs appear randomly in the currently supported dog slots (S card, KK card, pool card).
+  - On each page load and every hour, a new position and pose are selected.
+  - Possible configs: white dog alone, yellow dog alone, white/yellow separated into different cards, or both together as one image.
+  - `dog_state.entries` stores one or more `{placement, pose_key}` entries so separated dogs can render in different cards at the same time.
+  - Poses are drawn from approved single-dog assets and together moment assets.
+- **Companion mode** (after puppy event): the selected puppy event goes to the user's card for 24 hours.
+  - Stored in `localStorage` as `bloom_dog_companion` with `{user_id, until, event_kind}`.
+  - Event kinds: white puppy only, yellow puppy only, or one together image containing exactly two puppies.
+  - If another user triggers a puppy event within 24h, companion ownership transfers to the newest user and timer resets.
+  - Every hour during companion mode, the companion keeps the same owner/card but changes pose within the same event kind.
+  - After 24h, reverts to free-roaming automatically.
+- **Puppy Event rules**:
+  - Seed draw costs 2 wishes.
+  - Success chance is 20% and never shown to users.
+  - Puppy event chance is 80% and never framed as failure in UI copy.
+  - A puppy event is randomized once and reused for both the overlay and the 24h companion assignment.
+  - Valid puppy counts: 1 white puppy, 1 yellow puppy, or one together asset containing exactly 2 puppies. Never add extra puppies on top of a together asset.
+
+#### Entrance animation
+- Dogs run in from the side of their card when they first appear in a placement.
+- S's card / pool: dog enters from LEFT (`dog_enter_left` keyframe, `translateX(-200px)→0`).
+- KK's card: dog enters from RIGHT (`dog_enter_right` keyframe, `translateX(200px)→0`).
+- Sequence: run pose (1.1s) → idle pose swap → bounce → curious head tilt → settle → idle breathing.
+- `dog_has_entered` flag ensures entrance plays only once per placement event.
+- After 3.1s: `dog_idle` class added → `dog_alive` keyframe (breathing + head tilt, 8s infinite).
+
+#### CSS
+- `.dog_presence_img`: 88px wide, `filter: drop-shadow(0 1px 4px rgba(90,70,60,0.22))` for visibility on light backgrounds.
+- `.dog_presence_pair`: two dogs side by side at 72px each.
+- `.dog_entering_left` / `.dog_entering_right`: entrance keyframes.
+- `.dog_idle`: breathing animation via `dog_alive` keyframe.
 
 ### Weekly Sources Display
 - Shows `+ 📚 💪 this week` under each user's balance.
-- Sources = claimed habit icons + transfer icons received this week.
-- Firebase fields: `sWeeklySources`, `kkWeeklySources` (array of emoji strings).
-- **Bug fixed (2026-06-01)**: stale icons from previous week were bleeding into new week display.
-- Fix: Firebase now stores `weekStart` (ISO date string). Both `loadFromFirebase` and `onSnapshot` skip applying weekly sources if `data.weekStart !== current_week`. Prevents cross-week bleed.
-- Week starts on Monday. Computed by `get_week_start_date(new Date())`.
-
-### Button Layout (User Cards)
-- 4 buttons in one row: **Donate · Withdraw · Give to KK/S · Undo**
-- CSS: `padding: 6px 6px`, `font-size: 0.68rem`, `flex: 1`, `white-space: nowrap`, `flex-wrap: nowrap`
-
-### Documentation & Design System (2026-06-05)
-- `UI_Guidelines.md` created — Bloom Journal design system for all future agents.
-- `AGENTS_PLAYBOOK.md` updated — Communication Rules, Required Startup Checklist, Design Director role.
+- Bug fixed (2026-06-01): stale icons from previous week prevented by storing `weekStart` in Firebase.
 
 ---
 
 ## All Product & Design Decisions
 
-### Mystery Seed Design
-- Cost is 10 personal wishes (not pool) — keeps the mechanic self-contained per user.
-- No undo after draw — prevents gaming the system by undoing an unwanted flower.
-- Starter = 1 flower (snowdrop, the white one, first row second position) — keeps early vase sparse to create motivation.
-- Locked flowers show faint color (not fully gray) — creates curiosity about what's hidden.
-- Clicking locked flower shows a toast, not an alert — lighter, more elegant feedback.
-- Draw button placed in Pool card (not user cards) — reinforces connection between pool and unlocking.
+### Mystery Seed / Dog Draw Design
+- Cost 2 wishes (not 10) — lower barrier encourages draws.
+- 20% success rate is intentional and HIDDEN from users.
+- Dog failure event is framed as a positive companion moment, NOT a loss.
+- Dog messages all use warm, companion language — never failure language.
+
+### Dog Character Design
+- White dog = S's dog, official design is `images/white-puppy-idle.png`.
+- Yellow dog = Kang/KK's dog, official design is `images/yellow-puppy-idle.png`.
+- Current idle puppies are the master character references. Do not redesign them; all future puppy assets should match their face, ears, proportions, outline, and colors.
+- Both dogs roam together naturally — their presence is ambient and delightful.
+- Together mode uses one together image that already contains exactly two puppies.
 
 ### Vase & Visual Design
-- `side_depth = 4`: stems lean naturally against inner rim without extending outside vase walls.
-- `stem_lift max = 30`: center flowers clearly taller than sides (dome shape).
-- `overlap_y = 56 + stem_lift` (not 60): corrects a 5.6px gap caused by scale(1.4) math.
-- Snowflake breathing animation: 6s cycle, scale 0.15 → 1.0, anti-phased with stopper (4s) for 此消彼长 effect.
-- Pool decanter base aligned with vase bases via `pool_vessel_area` (flex:1) + `pool_bottom_spacer` (120px).
-
-### Bloom Journal Identity (from UI_Guidelines.md)
-- Core feelings: Cozy, Magical, Garden Inspired, Calm, Delightful, Rewarding.
-- Avoid: corporate dashboard style, bootstrap look, flashy gaming effects.
-- Color palette: Dusty Rose, Sage Green, Cream White, Warm Beige.
-- Avoid: neon colors, pure black backgrounds, high contrast gaming palettes.
-- Animation: elegant, slow, intentional, rewarding. No fast spinning or aggressive bounces.
-- References: Finch, Forest, Animal Crossing, Stardew Valley, Apple Journal (tone only, not copied).
-- Component strategy: prefer shadcn/ui, Framer Motion, Magic UI. Reuse before creating custom.
-- UI decision process: describe UX → layout → animation → then write code. Never jump to implementation.
+- (unchanged from before — see git history for details)
 
 ---
 
@@ -118,45 +167,54 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 Fields in `shared_state/main`:
 ```
-sBalance           integer   S's personal wish balance
-kkBalance          integer   KK's personal wish balance
-poolBalance        integer   Wish Pool balance
-weekStart          string    ISO date of current week's Monday (e.g. "2026-06-02")
-sWeeklySources     array     Emoji icons earned by S this week
-kkWeeklySources    array     Emoji icons earned by KK this week
-sVaseFlowers       array     Flower IDs currently in S's vase
-kkVaseFlowers      array     Flower IDs currently in KK's vase
-sUnlockedFlowers   array     Flower IDs permanently unlocked by S
-kkUnlockedFlowers  array     Flower IDs permanently unlocked by KK
-sHabitStatus       object    S's habit daily check-in status
-kkHabitStatus      object    KK's habit daily check-in status
-history            array     Weekly balance snapshots
+sBalance, kkBalance, poolBalance  integers
+weekStart                          ISO date string
+sWeeklySources, kkWeeklySources    arrays of emoji
+sVaseFlowers, kkVaseFlowers        arrays of flower IDs
+sUnlockedFlowers, kkUnlockedFlowers arrays of flower IDs
+sHabitStatus, kkHabitStatus        objects
+history                            array
 ```
 
 ---
 
-## Known Issues
+## Known Issues / Limitations
 
-- None currently.
-
----
-
-## Open Questions
-
-- None currently.
+- **White dog visibility**: white body on light lavender card has low natural contrast. Mitigated with CSS `drop-shadow`. If card background changes, may need to revisit.
+- **New basic pose transparent assets**: current cutouts intentionally keep a visible soft cream safety halo around puppies to preserve body pixels. They may need edge refinement later, but they are integrated now so the tracker does not reference deleted legacy assets.
+- The dog presence system is session-persistent (roaming changes on page refresh). Companion state persists 24h via localStorage.
 
 ---
 
-## Pending Work
+## Files Changed This Session
 
-- None. All discussed features are implemented and deployed.
+- `script.js` (v16): Puppy Event logic now randomizes one event and reuses it for overlay + companion assignment; hourly movement added; `dog_state.entries` supports separated white/yellow puppies in different cards.
+- `style.css` (v23): `dog_presence_together_img` and `seed_fail_together_dog` widths added so together single-image assets display larger.
+- `index.html`: version bumps to style.css?v=23, script.js?v=16.
+- `images/white-puppy-idle.png`, `images/yellow-puppy-idle.png`: approved master idle puppy designs.
+- `images/puppy_pose_previews/`: generated/confirmed 8-pose preview sheet and individual preview crops.
+- `images/puppy_pose_assets/`: conservative transparent PNGs for 8 basic poses plus transparent review sheet; integrated via `DOG_ASSETS`.
+- `images/puppy_moments_previews/`: Puppy Moments Pack 1 preview sheet, individual crops, and review sheet; not yet transparent and not integrated.
+- `images/puppy_moments_assets/`: Puppy Moments Pack 1 transparent PNG assets and transparent review sheet; integrated into roaming.
+
+---
+
+## Pending Work / Open Questions
+
+- Visual check: open Live Server and verify approved puppies display on S / KK / pool cards.
+- Consider: refine transparent edges on the new basic pose assets, reducing cream halo without removing white puppy body.
+- Visual check: verify hourly movement and Puppy Event companion transfer behavior.
+- Future UI expansion: add dog render slots beyond S/KK/pool, such as weekly section, vase/flower area, empty decorative spaces, and outside-card positions.
+- Future puppy moments expansion requested: kissing/hugging variations, more walking together, and additional scene-like interactions.
 
 ---
 
 ## Recommended Next Step
 
-- No pending tasks. Consider new features or habit/reward flow improvements.
-- Always read `UI_Guidelines.md` before designing any new UI.
+- Open Live Server (`http://127.0.0.1:5500`) and do a visual check of the dog system.
+- Check `script.js?v=16` behavior: Puppy Event overlay count, 24h companion ownership, and hourly movement.
+- Push to GitHub when satisfied. Remember to update version numbers if any more changes are made before push.
+- Read `UI_Guidelines.md` before any further UI changes.
 
 ---
 
@@ -164,12 +222,12 @@ history            array     Weekly balance snapshots
 
 - Read `AGENTS_PLAYBOOK.md` → `PROJECT_STATUS.md` → `UI_Guidelines.md` before any UI work.
 - Communicate in Chinese with the project owner. Keep technical terms in English.
-- Write Markdown docs and code comments in English.
 - Local test server: http://127.0.0.1:5500/index.html
-- After pushing to GitHub, bump version numbers in index.html (`style.css?vN`, `script.js?vN`) to bust browser cache.
-- Prefer small, reversible changes. Explain tradeoffs before implementing.
-- Update this file after completing meaningful work.
-- Do not invent features. Clarify before implementing anything new.
+- After pushing to GitHub, bump version numbers in index.html to bust browser cache.
+- The dog PNG files in `images/` were extracted from `images/sprite_sheet.png`. Keep that file.
+- Official puppy design references are now `white-puppy-idle.png` and `yellow-puppy-idle.png`, not the older extracted `s-sit.png` / `k-sit.png` files.
+- The older `s-*.png`, `k-*.png`, and `together-*.png` files were deleted and should not be referenced by app code.
+- `dog_has_entered` is a module-level boolean. It resets when placement changes (randomize_dog_roaming or set_dog_companion_mode). This prevents re-entrance on Firebase re-renders.
 
 ---
 

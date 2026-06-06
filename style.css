@@ -1216,6 +1216,247 @@ tbody tr:last-child td {
   100% { opacity: 1; transform: translateY(0); }
 }
 
+/* ─── Failed Draw Overlay ──────────────────────────────── */
+
+.seed_fail_overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(248, 240, 228, 0.93);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  animation: fail_overlay_fade_in 0.4s ease forwards;
+}
+
+@keyframes fail_overlay_fade_in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.seed_fail_box {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 340px;
+  width: 90%;
+}
+
+.seed_fail_paw {
+  font-size: 2.8rem;
+  animation: paw_pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both;
+}
+
+@keyframes paw_pop {
+  from { transform: scale(0) rotate(-20deg); opacity: 0; }
+  to   { transform: scale(1) rotate(0deg);   opacity: 1; }
+}
+
+.seed_fail_msg {
+  font-size: 1rem;
+  color: var(--ink_color);
+  margin: 0;
+  line-height: 1.6;
+  text-align: center;
+  max-width: 280px;
+  animation: fade_up 0.4s ease 0.3s both;
+}
+
+.seed_fail_dogs {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 20px;
+  min-height: 110px;
+  padding: 6px 0;
+}
+
+.seed_fail_dog {
+  width: 100px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.seed_fail_together_dog {
+  width: 180px;
+  max-width: 82vw;
+}
+
+.seed_fail_dog svg,
+.seed_fail_dog img {
+  width: 100%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 1px 4px rgba(90, 70, 60, 0.22));
+}
+
+.seed_fail_close {
+  margin-top: 4px;
+  padding: 11px 32px;
+  border: 1.5px solid rgba(160, 130, 100, 0.28);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink_color);
+  font-family: inherit;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: background 120ms, transform 120ms;
+  animation: fade_up 0.4s ease 1.8s both;
+}
+
+.seed_fail_close:hover {
+  background: rgba(255, 255, 255, 0.96);
+  transform: translateY(-1px);
+}
+
+/* ─── Dog Run-In Animations (overlay) ─────────────────── */
+
+@keyframes dog_run_left {
+  0%   { transform: translateX(-140px); opacity: 0; }
+  55%  { transform: translateX(10px);   opacity: 1; }
+  75%  { transform: translateX(-5px); }
+  100% { transform: translateX(0);       opacity: 1; }
+}
+
+@keyframes dog_run_right {
+  0%   { transform: translateX(140px) scaleX(-1); opacity: 0; }
+  55%  { transform: translateX(-10px) scaleX(-1); opacity: 1; }
+  75%  { transform: translateX(5px)  scaleX(-1); }
+  100% { transform: translateX(0)    scaleX(-1);  opacity: 1; }
+}
+
+.dog_run_left {
+  animation: dog_run_left 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.dog_run_right {
+  animation: dog_run_right 0.75s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* flip a single dog to face right (mirrored from default left-facing) */
+.dog_flip {
+  transform: scaleX(-1);
+}
+
+/* ─── Dog Presence Area (roaming + companion) ────────── */
+
+.dog_presence_area {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 12px 0 2px;
+  animation: fade_up 0.6s ease forwards;
+}
+
+.dog_presence_img {
+  width: 88px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  transform-origin: bottom center;
+  /* Subtle shadow makes white dog pop from light card background */
+  filter: drop-shadow(0 1px 4px rgba(90, 70, 60, 0.22));
+}
+
+.dog_presence_together_img {
+  width: min(168px, 82%);
+}
+
+/* Legacy pair layout, kept for quick fallback/debugging. Current together moments use one image. */
+.dog_presence_pair {
+  gap: 4px;
+}
+
+.dog_presence_pair .dog_presence_img {
+  width: 72px;
+}
+
+/* ─── Dog Entrance Animations ──────────────────────────── */
+
+@keyframes dog_enter_left {
+  /* Run in from left */
+  0%   { transform: translateX(-200px); opacity: 0; }
+  28%  { opacity: 1; }
+  40%  { transform: translateX(14px); }
+  /* Bounce on landing */
+  47%  { transform: translateX(0) scaleY(0.85) scaleX(1.12); }
+  55%  { transform: translateX(0) scaleY(1.10) scaleX(0.93); }
+  61%  { transform: translateX(0) scaleY(1); }
+  /* Curious peek — sniff the flowers */
+  70%  { transform: translateX(7px) rotate(14deg); }
+  80%  { transform: translateX(-3px) rotate(-7deg); }
+  88%  { transform: translateX(0) rotate(0); }
+  /* Settle */
+  94%  { transform: scaleY(0.97); }
+  100% { transform: none; }
+}
+
+@keyframes dog_enter_right {
+  /* Run in from right */
+  0%   { transform: translateX(200px); opacity: 0; }
+  28%  { opacity: 1; }
+  40%  { transform: translateX(-14px); }
+  47%  { transform: translateX(0) scaleY(0.85) scaleX(1.12); }
+  55%  { transform: translateX(0) scaleY(1.10) scaleX(0.93); }
+  61%  { transform: translateX(0) scaleY(1); }
+  70%  { transform: translateX(-7px) rotate(-14deg); }
+  80%  { transform: translateX(3px) rotate(7deg); }
+  88%  { transform: translateX(0) rotate(0); }
+  94%  { transform: scaleY(0.97); }
+  100% { transform: none; }
+}
+
+.dog_entering_left {
+  animation: dog_enter_left 3.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dog_entering_right {
+  animation: dog_enter_right 3.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ─── Dog Idle Animations (companion area) ─────────────── */
+/* Combined into one @keyframes so breathe + tilt don't fight over transform. */
+
+@keyframes dog_alive {
+  0%        { transform: scaleY(1)     rotate(0deg); }
+  12%       { transform: scaleY(1.03)  rotate(0deg); }
+  24%       { transform: scaleY(1)     rotate(0deg); }
+  40%       { transform: scaleY(1)     rotate(0deg); }
+  52%       { transform: scaleY(1)     rotate(6deg); }
+  62%       { transform: scaleY(1)     rotate(-3deg); }
+  72%       { transform: scaleY(1)     rotate(0deg); }
+  86%       { transform: scaleY(1.03)  rotate(0deg); }
+  100%      { transform: scaleY(1)     rotate(0deg); }
+}
+
+@keyframes dog_alive_flip {
+  0%        { transform: scaleX(-1) scaleY(1)     rotate(0deg); }
+  12%       { transform: scaleX(-1) scaleY(1.03)  rotate(0deg); }
+  24%       { transform: scaleX(-1) scaleY(1)     rotate(0deg); }
+  40%       { transform: scaleX(-1) scaleY(1)     rotate(0deg); }
+  52%       { transform: scaleX(-1) scaleY(1)     rotate(6deg); }
+  62%       { transform: scaleX(-1) scaleY(1)     rotate(-3deg); }
+  72%       { transform: scaleX(-1) scaleY(1)     rotate(0deg); }
+  86%       { transform: scaleX(-1) scaleY(1.03)  rotate(0deg); }
+  100%      { transform: scaleX(-1) scaleY(1)     rotate(0deg); }
+}
+
+.dog_idle {
+  transform-origin: bottom center;
+  animation: dog_alive 8s ease-in-out 0.6s infinite;
+}
+
+/* Second companion dog faces the other way — flip variant bakes scaleX(-1) into keyframes. */
+.dog_companion_flip.dog_idle {
+  transform-origin: bottom center;
+  animation: dog_alive_flip 8.5s ease-in-out 1.4s infinite;
+}
+
 @media (max-width: 900px) {
   .summary_section {
     grid-template-columns: 1fr;

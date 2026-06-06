@@ -292,6 +292,291 @@ async function resetWeeklySourcesInFirebase() {
 const storage_key = "wish_tracker_app_state";
 const total_wishes = 30;
 
+// ─── Dog Presence System ────────────────────────────────────────────────────
+// Dogs are always visible somewhere on the page. They roam randomly across
+// the supported dog slots. After a Puppy Event, the selected puppy or puppy
+// pair stays in that user's card for 24 hours (persisted in localStorage).
+// A newer Puppy Event transfers the companion and resets the timer.
+
+let dog_state = {
+  placement: 'pool',        // 's' | 'kk' | 'pool' — which card shows dogs
+  pose_key:  'white.idle',  // DOG_ASSETS key to render
+  entries:   null,          // [{ placement, pose_key }] supports separated dogs
+  event_kind: null,         // 'white' | 'yellow' | 'together'
+  companion_user_id: null,  // 's' | 'kk' — set after a Puppy Event
+  companion_until:   0,     // ms timestamp
+  next_move_at: 0,          // ms timestamp for hourly movement
+};
+
+// Entrance plays once per placement event; re-renders just use idle.
+let dog_has_entered = false;
+
+const DOG_ASSETS = {
+  white: {
+    idle:        'images/white-puppy-idle.png',
+    run:         'images/puppy_pose_assets/white-puppy-run.png',
+    sleep:       'images/puppy_pose_assets/white-puppy-sleep.png',
+    hold_flower: 'images/puppy_pose_assets/white-puppy-hold-flower.png',
+    look_user:   'images/puppy_pose_assets/white-puppy-look-user.png',
+    violin:      'images/puppy_moments_assets/white-puppy-violin.png',
+    stretch:     'images/puppy_moments_assets/white-puppy-stretch.png',
+    lazy_nap:    'images/puppy_moments_assets/white-puppy-lazy-nap.png',
+    walk:        'images/puppy_moments_assets/white-puppy-riverside-walk.png',
+  },
+  yellow: {
+    idle:      'images/yellow-puppy-idle.png',
+    run:       'images/puppy_pose_assets/yellow-puppy-run.png',
+    sleep:     'images/puppy_pose_assets/yellow-puppy-sleep.png',
+    hold_ball: 'images/puppy_pose_assets/yellow-puppy-hold-ball.png',
+    look_user: 'images/puppy_pose_assets/yellow-puppy-look-user.png',
+    yummy:     'images/puppy_moments_assets/yellow-puppy-yummy-time.png',
+    snack:     'images/puppy_moments_assets/yellow-puppy-snack-attack.png',
+    zoomies:   'images/puppy_moments_assets/yellow-puppy-zoomies.png',
+    love:      'images/puppy_moments_assets/yellow-puppy-love-you.png',
+  },
+};
+
+const DOG_TOGETHER_ASSETS = {
+  high_five:   'images/puppy_moments_assets/together-high-five.png',
+  cuddle:      'images/puppy_moments_assets/together-cuddle.png',
+  walk:        'images/puppy_moments_assets/together-walk.png',
+  movie_night: 'images/puppy_moments_assets/together-movie-night.png',
+};
+
+const DOG_PLACEMENTS = ['s', 'kk', 'pool'];
+const WHITE_ROAM_POSES = ['white.idle', 'white.sleep', 'white.hold_flower', 'white.look_user', 'white.violin', 'white.stretch', 'white.lazy_nap', 'white.walk'];
+const YELLOW_ROAM_POSES = ['yellow.idle', 'yellow.sleep', 'yellow.hold_ball', 'yellow.look_user', 'yellow.yummy', 'yellow.snack', 'yellow.zoomies', 'yellow.love'];
+const TOGETHER_ROAM_POSES = ['together.high_five', 'together.cuddle', 'together.walk', 'together.movie_night'];
+const DOG_MOVE_INTERVAL_MS = 60 * 60 * 1000;
+
+function dog_asset_src(color, pose = 'idle') {
+  return DOG_ASSETS[color]?.[pose] || DOG_ASSETS[color]?.idle || '';
+}
+
+function dog_together_asset_src(pose = 'cuddle') {
+  return DOG_TOGETHER_ASSETS[pose] || DOG_TOGETHER_ASSETS.cuddle;
+}
+
+function parse_dog_pose_key(pose_key) {
+  const [color, pose = 'idle'] = pose_key.split('.');
+  return { color, pose };
+}
+
+function pick_two_distinct(arr) {
+  const first = pick_one(arr);
+  const remaining = arr.filter(item => item !== first);
+  return [first, pick_one(remaining)];
+}
+
+function pick_one_except(arr, current_value) {
+  const remaining = arr.filter(item => item !== current_value);
+  return pick_one(remaining.length ? remaining : arr);
+}
+
+function dog_entries_signature(entries) {
+  return (entries || [])
+    .map(entry => `${entry.placement}:${entry.pose_key}`)
+    .sort()
+    .join('|');
+}
+
+function create_puppy_event() {
+  const roll = Math.random();
+  if (roll < 0.34) {
+    return { kind: 'white', pose_key: pick_one(WHITE_ROAM_POSES) };
+  }
+  if (roll < 0.67) {
+    return { kind: 'yellow', pose_key: pick_one(YELLOW_ROAM_POSES) };
+  }
+  return { kind: 'together', pose_key: pick_one(TOGETHER_ROAM_POSES) };
+}
+
+function create_companion_entries(user_id, event) {
+  return [{ placement: user_id, pose_key: event.pose_key }];
+}
+
+function randomize_dog_roaming() {
+  const previous_signature = dog_entries_signature(dog_state.entries);
+  let next_entries = null;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+  const roll = Math.random();
+
+  if (roll < 0.45) {
+    const [white_placement, yellow_placement] = pick_two_distinct(DOG_PLACEMENTS);
+      next_entries = [
+      { placement: white_placement, pose_key: pick_one(WHITE_ROAM_POSES) },
+      { placement: yellow_placement, pose_key: pick_one(YELLOW_ROAM_POSES) },
+    ];
+  } else if (roll < 0.78) {
+      next_entries = [{
+      placement: pick_one(DOG_PLACEMENTS),
+      pose_key: pick_one(TOGETHER_ROAM_POSES),
+    }];
+  } else {
+    const is_white = Math.random() < 0.5;
+      next_entries = [{
+      placement: pick_one(DOG_PLACEMENTS),
+      pose_key: pick_one(is_white ? WHITE_ROAM_POSES : YELLOW_ROAM_POSES),
+    }];
+    }
+
+    if (dog_entries_signature(next_entries) !== previous_signature) break;
+  }
+
+  dog_state.entries = next_entries;
+  dog_state.placement = dog_state.entries[0].placement;
+  dog_state.pose_key = dog_state.entries[0].pose_key;
+  dog_state.event_kind = null;
+  dog_state.companion_user_id = null;
+  dog_state.companion_until   = 0;
+  dog_state.next_move_at = Date.now() + DOG_MOVE_INTERVAL_MS;
+  dog_has_entered = false;
+}
+
+function set_dog_companion_mode(user_id, event = create_puppy_event()) {
+  const entries = create_companion_entries(user_id, event);
+  dog_state.placement = user_id;
+  dog_state.pose_key  = entries[0].pose_key;
+  dog_state.entries   = entries;
+  dog_state.event_kind = event.kind;
+  dog_state.companion_user_id = user_id;
+  dog_state.companion_until   = Date.now() + 24 * 60 * 60 * 1000;
+  dog_state.next_move_at      = Date.now() + DOG_MOVE_INTERVAL_MS;
+  dog_has_entered = false;
+  localStorage.setItem('bloom_dog_companion', JSON.stringify({
+    user_id,
+    until: dog_state.companion_until,
+    event_kind: event.kind,
+  }));
+}
+
+function init_dog_state() {
+  const saved = localStorage.getItem('bloom_dog_companion');
+  if (saved) {
+    const c = JSON.parse(saved);
+    if (c.until > Date.now()) {
+      const kind = c.event_kind || 'together';
+      const pose_key = pick_one(kind === 'white' ? WHITE_ROAM_POSES : kind === 'yellow' ? YELLOW_ROAM_POSES : TOGETHER_ROAM_POSES);
+      dog_state.placement          = c.user_id;
+      dog_state.pose_key           = pose_key;
+      dog_state.entries            = [{ placement: c.user_id, pose_key }];
+      dog_state.event_kind         = kind;
+      dog_state.companion_user_id  = c.user_id;
+      dog_state.companion_until    = c.until;
+      dog_state.next_move_at       = Date.now() + DOG_MOVE_INTERVAL_MS;
+      return;
+    }
+    localStorage.removeItem('bloom_dog_companion');
+  }
+  randomize_dog_roaming();
+}
+
+function move_companion_dogs() {
+  if (!dog_state.companion_user_id || dog_state.companion_until <= Date.now()) {
+    localStorage.removeItem('bloom_dog_companion');
+    randomize_dog_roaming();
+    return;
+  }
+
+  const kind = dog_state.event_kind || 'together';
+  const current_pose = dog_state.entries?.[0]?.pose_key;
+  const pose_pool = kind === 'white' ? WHITE_ROAM_POSES : kind === 'yellow' ? YELLOW_ROAM_POSES : TOGETHER_ROAM_POSES;
+  const pose_key = pick_one_except(pose_pool, current_pose);
+  dog_state.entries = [{ placement: dog_state.companion_user_id, pose_key }];
+  dog_state.placement = dog_state.companion_user_id;
+  dog_state.pose_key = pose_key;
+  dog_state.next_move_at = Date.now() + DOG_MOVE_INTERVAL_MS;
+  dog_has_entered = false;
+}
+
+function move_dogs_if_due(force = false) {
+  if (!force && dog_state.next_move_at > Date.now()) return;
+  if (dog_state.companion_user_id) {
+    move_companion_dogs();
+  } else {
+    randomize_dog_roaming();
+  }
+  render_app();
+}
+
+function start_dog_hourly_movement() {
+  setInterval(() => move_dogs_if_due(), 60 * 1000);
+}
+
+function render_dog_presence_for(placement_id) {
+  const entries = dog_state.entries || [{ placement: dog_state.placement, pose_key: dog_state.pose_key }];
+  const entry = entries.find(item => item.placement === placement_id);
+  if (!entry) return '';
+
+  const direction = placement_id === 'kk' ? 'right' : 'left';
+
+  if (entry.pose_key.startsWith('together.')) {
+    const { pose } = parse_dog_pose_key(entry.pose_key);
+    const together_src = dog_together_asset_src(pose);
+    return `
+      <div class="dog_presence_area">
+        <img src="${together_src}"
+             class="dog_presence_img dog_presence_together_img"
+             data-dog-entrance="${direction}"
+             data-dog-idle-src="${together_src}"
+             data-dog-run-src="${together_src}"
+             alt="white and yellow puppies together" draggable="false">
+      </div>`;
+  }
+
+  const { color, pose } = parse_dog_pose_key(entry.pose_key);
+  const idle_src = dog_asset_src(color, pose);
+  const run_src = dog_asset_src(color, 'run');
+
+  return `
+    <div class="dog_presence_area">
+      <img src="${idle_src}"
+           class="dog_presence_img"
+           data-dog-entrance="${direction}"
+           data-dog-idle-src="${idle_src}"
+           data-dog-run-src="${run_src}"
+           alt="puppy" draggable="false">
+    </div>`;
+}
+
+function trigger_dog_entrances() {
+  const entering_dogs = [...document.querySelectorAll('[data-dog-entrance]')];
+  if (!entering_dogs.length) return;
+
+  if (!dog_has_entered) {
+    dog_has_entered = true;
+
+    entering_dogs.forEach((el) => {
+      const direction = el.dataset.dogEntrance;
+      const idle_src = el.dataset.dogIdleSrc || el.src;
+      const run_src = el.dataset.dogRunSrc;
+
+      // Phase 1: swap to run pose while running in
+      if (run_src) el.src = run_src;
+
+      el.classList.add(`dog_entering_${direction}`);
+
+      // Phase 2: swap to idle pose mid-animation (~1.1s = arrival moment)
+      setTimeout(() => { if (el.isConnected) el.src = idle_src; }, 1100);
+
+      // Phase 3: drop entry animation, start breathing idle
+      setTimeout(() => {
+        if (!el.isConnected) return;
+        el.removeAttribute('data-dog-entrance');
+        el.classList.remove(`dog_entering_${direction}`);
+        el.classList.add('dog_idle');
+      }, 3100);
+    });
+  } else {
+    // Already entered this session — just show idle immediately
+    entering_dogs.forEach((el) => {
+      el.removeAttribute('data-dog-entrance');
+      el.classList.add('dog_idle');
+    });
+  }
+}
+
 const sample_users = [
   {
     user_id: "s",
@@ -330,8 +615,9 @@ const sample_users = [
 document.addEventListener("DOMContentLoaded", init_app);
 
 function init_app() {
-  // Seed demo data once, then render entirely from localStorage-backed state.
   initialize_storage();
+  init_dog_state();
+  start_dog_hourly_movement();
   bind_events();
   render_app();
 }
@@ -403,9 +689,9 @@ function bind_events() {
 function handle_click(event) {
   const toggle_button = event.target.closest("[data_action='toggle_day'], [data-action='toggle_day']");
   const action_button = event.target.closest("[data_action='wish_action'], [data-action='wish_action']");
-  const flower_button  = event.target.closest("[data-action='pick_flower']");
-  const clear_button   = event.target.closest("[data-action='clear_vase']");
-  const shuffle_button = event.target.closest("[data-action='shuffle_vase']");
+  const flower_button   = event.target.closest("[data-action='pick_flower']");
+  const clear_button    = event.target.closest("[data-action='clear_vase']");
+  const shuffle_button  = event.target.closest("[data-action='shuffle_vase']");
   const reset_button   = event.target.closest("#reset_demo_button");
 
   if (flower_button) {
@@ -615,6 +901,7 @@ function render_app() {
   render_week_label(state.week_start_date);
   render_trackers(state);
   render_actions(state);
+  trigger_dog_entrances();
 }
 
 function render_summary(state) {
@@ -641,6 +928,7 @@ function render_summary(state) {
         <p class="summary_meta">${person_a_weekly_earned}</p>
       </div>
       ${render_balance_actions(person_a, person_b, state)}
+      ${render_dog_presence_for(person_a.user_id)}
     </article>
     ${render_pool_card(state)}
     <article class="summary_card user_card user_card_reverse">
@@ -654,6 +942,7 @@ function render_summary(state) {
         <p class="summary_meta">${person_b_weekly_earned}</p>
       </div>
       ${render_balance_actions(person_b, person_a, state)}
+      ${render_dog_presence_for(person_b.user_id)}
     </article>
   `;
 }
@@ -1294,11 +1583,34 @@ function render_crystal_glass(user_id, wish_balance, vase_flowers) {
   `;
 }
 
+// ─── Dog Character Poses ────────────────────────────────────────────────────
+// Used by the Mystery Seed fail overlay. Main-page roaming uses DOG_ASSETS.
+const DOG_POSES = {
+  white: {
+    idle:        `<img src='${dog_asset_src('white', 'idle')}' alt='white puppy' draggable='false'>`,
+    run:         `<img src='${dog_asset_src('white', 'run')}' alt='white puppy' draggable='false'>`,
+    sleep:       `<img src='${dog_asset_src('white', 'sleep')}' alt='white puppy' draggable='false'>`,
+    hold_flower: `<img src='${dog_asset_src('white', 'hold_flower')}' alt='white puppy' draggable='false'>`,
+    look_user:   `<img src='${dog_asset_src('white', 'look_user')}' alt='white puppy' draggable='false'>`,
+  },
+  yellow: {
+    idle:      `<img src='${dog_asset_src('yellow', 'idle')}' alt='yellow puppy' draggable='false'>`,
+    run:       `<img src='${dog_asset_src('yellow', 'run')}' alt='yellow puppy' draggable='false'>`,
+    sleep:     `<img src='${dog_asset_src('yellow', 'sleep')}' alt='yellow puppy' draggable='false'>`,
+    hold_ball: `<img src='${dog_asset_src('yellow', 'hold_ball')}' alt='yellow puppy' draggable='false'>`,
+    look_user: `<img src='${dog_asset_src('yellow', 'look_user')}' alt='yellow puppy' draggable='false'>`,
+  },
+};
+
+function get_dog_svg(color, pose = 'idle') {
+  return (DOG_POSES[color]?.[pose] || DOG_POSES[color]?.idle || '').trim();
+}
+
 function render_mystery_seed_button(user) {
   const emoji = user.user_id === 's' ? '🐑' : '🐷';
   const all_unlocked = user.unlocked_flowers && user.unlocked_flowers.length >= FLOWER_LIST.length;
-  const disabled = user.wish_balance < 10 || all_unlocked;
-  const label = all_unlocked ? 'All Bloomed!' : `${emoji} Plant a Seed`;
+  const disabled = user.wish_balance < 2 || all_unlocked;
+  const label = all_unlocked ? 'All Bloomed!' : `${emoji} Plant the Seed`;
   return `<button
     class="mini_action_button mystery_seed_btn${disabled ? ' mystery_seed_btn_disabled' : ''}"
     type="button"
@@ -1393,6 +1705,7 @@ function render_pool_card(state) {
         ${render_mystery_seed_button(state.users[0])}
         ${render_mystery_seed_button(state.users[1])}
       </div>
+      ${render_dog_presence_for('pool')}
     </article>
   `;
 }
@@ -1723,6 +2036,65 @@ function undo_last_action(state) {
   state.last_action = null;
 }
 
+// ─── Randomised copy pools ───────────────────────────────────────────────────
+function pick_one(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+const SEED_DIALOG_TITLES = [
+  '🌱 Plant the Seed?',
+  '✨ Ready to Make a Wish?',
+  '🌸 Shall We See What Grows?',
+  '🪴 Something Wants to Bloom',
+  '🌼 A Little Garden Magic?',
+  '🍃 Time to Plant a Wish?',
+  '🌷 Let\'s Grow Something Together',
+];
+
+const SEED_DIALOG_DESCS = [
+  'Scatter 2 wishes into the garden and see what blooms.',
+  'Offer 2 wishes and let\'s see what grows today.',
+  'A tiny seed pod is waiting... just 2 wishes to find out.',
+  'The garden is listening. It only asks for 2 wishes.',
+  'Plant 2 little wishes and see what happens.',
+  'Every bloom begins with a wish. Offer 2 and see.',
+  'Something may be growing beneath the soil — 2 wishes to peek.',
+  'The garden might have a surprise waiting, for just 2 wishes.',
+  'Send 2 wishes into the garden and see what returns.',
+  'A quiet corner of the garden is waiting for 2 of your wishes.',
+];
+
+const SEED_DIALOG_BTNS = [
+  { confirm: '🌱 Let\'s Plant It',  cancel: '🐾 Maybe Later' },
+  { confirm: '🌷 Grow Something',   cancel: '🍃 Not Yet' },
+  { confirm: '✨ Make a Wish',      cancel: '🌙 Another Time' },
+  { confirm: '🌼 Into the Garden',  cancel: '🐶 Maybe Tomorrow' },
+];
+
+const SEED_SUCCESS_MSGS = [
+  '🌸 Something beautiful bloomed!',
+  '🌷 Your wish blossomed!',
+  '🌼 A new bloom appeared!',
+  '🌺 A flower emerged!',
+  '🌹 The garden returned a beautiful bloom.',
+  '🌸 Something wonderful took root.',
+  '🌻 A tiny miracle bloomed.',
+  '🌷 Your kindness became a flower.',
+  '🌼 The garden has gifted you a bloom.',
+  '🌸 A blossom found its way to you.',
+];
+
+const SEED_DOG_MSGS = [
+  '🐶 A puppy visit found its way to you.',
+  '🐾 Some curious paws wandered into your garden.',
+  '🐶 A fluffy companion came to keep you company.',
+  '🐾 The garden sent a puppy surprise.',
+  '🐶 Tiny paws arrived with a little magic.',
+  '🐾 A curious nose discovered your wish.',
+  '🐶 The puppies brought a cozy visit today.',
+  '🐾 Your wishes made a new friend today.',
+  '🐶 Someone fluffy decided to stay awhile.',
+  '🐾 A puppy companion curled up beside your garden.',
+];
+
 function show_mystery_seed_dialog(user_id) {
   const existing = document.getElementById('mystery_seed_dialog');
   if (existing) existing.remove();
@@ -1730,13 +2102,17 @@ function show_mystery_seed_dialog(user_id) {
   const overlay = document.createElement('div');
   overlay.id = 'mystery_seed_dialog';
   overlay.className = 'seed_dialog_overlay';
+  const d_title = pick_one(SEED_DIALOG_TITLES);
+  const d_desc  = pick_one(SEED_DIALOG_DESCS);
+  const d_btns  = pick_one(SEED_DIALOG_BTNS);
+
   overlay.innerHTML = `
     <div class="seed_dialog_box">
-      <p class="seed_dialog_title">Plant a Mystery Seed?</p>
-      <p class="seed_dialog_sub">Spend 10 Wishes and discover what blooms!</p>
+      <p class="seed_dialog_title">${d_title}</p>
+      <p class="seed_dialog_sub">${d_desc}</p>
       <div class="seed_dialog_btns">
-        <button class="seed_dialog_confirm" id="seed_confirm_btn">🌱 Plant It</button>
-        <button class="seed_dialog_cancel" id="seed_cancel_btn">🤔 Maybe Later</button>
+        <button class="seed_dialog_confirm" id="seed_confirm_btn">${d_btns.confirm}</button>
+        <button class="seed_dialog_cancel" id="seed_cancel_btn">${d_btns.cancel}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -1752,20 +2128,32 @@ function show_mystery_seed_dialog(user_id) {
 async function perform_mystery_seed_draw(user_id) {
   const state = await getLatestStateFromFirebase();
   const user = state.users.find(u => u.user_id === user_id);
-  if (!user || user.wish_balance < 10) return;
+  if (!user || user.wish_balance < 2) return;
 
   const locked = FLOWER_LIST.filter(id => !user.unlocked_flowers.includes(id));
   if (locked.length === 0) return;
 
-  const new_flower = locked[Math.floor(Math.random() * locked.length)];
-  user.wish_balance -= 10;
-  user.unlocked_flowers = [...user.unlocked_flowers, new_flower];
+  // Deduct the 2-wish cost regardless of outcome.
+  user.wish_balance -= 2;
   state.last_action = null;
 
-  save_state(state);
-  await saveBalancesToFirebase(state);
-  render_app();
-  show_seed_reveal(new_flower, user.name);
+  const success = Math.random() < 0.20;
+
+  if (success) {
+    const new_flower = locked[Math.floor(Math.random() * locked.length)];
+    user.unlocked_flowers = [...user.unlocked_flowers, new_flower];
+    save_state(state);
+    await saveBalancesToFirebase(state);
+    render_app();
+    show_seed_reveal(new_flower, user.name);
+  } else {
+    const puppy_event = create_puppy_event();
+    save_state(state);
+    await saveBalancesToFirebase(state);
+    set_dog_companion_mode(user_id, puppy_event);
+    render_app();
+    show_seed_fail_reveal(user_id, puppy_event);
+  }
 }
 
 function flower_id_to_name(id) {
@@ -1805,7 +2193,7 @@ function show_seed_reveal(flower_id, user_name) {
     burst_el.classList.remove('seed_burst_active');
     flower_el.style.display = 'flex';
     flower_el.classList.add('seed_flower_appear');
-    label_el.textContent = 'New Flower Unlocked!';
+    label_el.textContent = pick_one(SEED_SUCCESS_MSGS);
     name_el.textContent = flower_id_to_name(flower_id);
   }, 2300);
   setTimeout(() => { close_btn.style.display = 'block'; }, 3200);
@@ -1824,6 +2212,42 @@ function show_seed_locked_toast() {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 2200);
 }
+
+// Full-screen overlay shown for a Puppy Event.
+function show_seed_fail_reveal(user_id, puppy_event) {
+  const user = get_state().users.find(u => u.user_id === user_id);
+  const dog_msg = pick_one(SEED_DOG_MSGS);
+
+  let dog_imgs = '';
+  if (puppy_event.kind === 'together') {
+    const { pose } = parse_dog_pose_key(puppy_event.pose_key);
+    dog_imgs = `
+      <div class="seed_fail_dog seed_fail_together_dog dog_run_right">
+        <img src="${dog_together_asset_src(pose)}" alt="white and yellow puppies together" draggable="false">
+      </div>`;
+  } else {
+    dog_imgs = `
+      <div class="seed_fail_dog dog_run_right">
+        ${get_dog_svg(puppy_event.kind, 'run')}
+      </div>`;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'seed_fail_overlay';
+  overlay.id = 'seed_fail_overlay';
+  overlay.innerHTML = `
+    <div class="seed_fail_box">
+      <div class="seed_fail_paw">🐾</div>
+      <p class="seed_fail_msg">${dog_msg}</p>
+      <div class="seed_fail_dogs">${dog_imgs}</div>
+      <button class="seed_fail_close" id="seed_fail_close_btn">✦ Continue</button>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#seed_fail_close_btn').onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+}
+
 
 function show_no_wishes_message(state, user_id) {
   state.ui_message = "No wishes available";
