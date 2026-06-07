@@ -21,7 +21,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 - App deployed: https://essie-yzq.github.io/wish-tracker/
 - Asset versions: `style.css?v=23`, `script.js?v=18`
 - Latest dog sync code commit: `7475a63 Ensure puppy state renders from Firebase`
-- Latest production commit: `6c1e866 Update project status for puppy sync fix`
+- Production branch: `origin/main` includes the Firebase dog sync fix.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
