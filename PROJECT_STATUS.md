@@ -9,7 +9,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- Puppy Companion System shipped to production; Firebase dog sync is committed locally and waiting for production push.
+- Puppy Companion System and Firebase dog sync are shipped to production.
 - Approved idle puppy designs are the master visual references for future puppy assets.
 - Puppy location/pose state now syncs through Firebase so S and Kang see the same dogs.
 - Next work should focus on visual QA and optional placement expansion beyond S / Kang / Pool cards.
@@ -21,7 +21,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 - App deployed: https://essie-yzq.github.io/wish-tracker/
 - Asset versions: `style.css?v=23`, `script.js?v=18`
 - Latest dog sync code commit: `7475a63 Ensure puppy state renders from Firebase`
-- Latest production commit: `3129fc8 Add puppy companion system assets` (dog sync not pushed yet)
+- Latest production commit: `6c1e866 Update project status for puppy sync fix`
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
@@ -230,7 +230,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Push latest `main` to production, then test two devices/browsers against the same deployment and confirm `dogState` keeps puppy placement/pose synchronized.
+- Test two devices/browsers against the production deployment and confirm `dogState` keeps puppy placement/pose synchronized.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
 
