@@ -9,7 +9,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- Puppy Companion System shipped to production.
+- Puppy Companion System shipped to production; Firebase dog sync is committed locally and waiting for production push.
 - Approved idle puppy designs are the master visual references for future puppy assets.
 - Puppy location/pose state now syncs through Firebase so S and Kang see the same dogs.
 - Next work should focus on visual QA and optional placement expansion beyond S / Kang / Pool cards.
@@ -19,8 +19,9 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=17` (local, not yet pushed)
-- Latest production commit: `3129fc8 Add puppy companion system assets`
+- Asset versions: `style.css?v=23`, `script.js?v=18`
+- Latest local commit: `aa1401e Ensure puppy state renders from Firebase`
+- Latest production commit: `3129fc8 Add puppy companion system assets` (dog sync not pushed yet)
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
@@ -109,6 +110,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 #### Dog state machine (`dog_state` in script.js)
 - **Roaming mode** (default): dogs appear randomly in the currently supported dog slots (S card, KK card, pool card).
   - Dog position/pose is synced through Firebase field `dogState`, so different devices see the same dog scene.
+  - Dogs do not render until shared Firebase `dogState` is ready, preventing mobile/desktop from briefly showing different local random puppies on page open.
   - If Firebase has no `dogState` yet, the app creates one shared roaming state.
   - Every hour, a new position and pose are selected and written back to Firebase.
   - Possible configs: white dog alone, yellow dog alone, white/yellow separated into different cards, or both together as one image.
@@ -205,9 +207,9 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Files Changed This Session
 
-- `script.js` (v17): Dog state now syncs through Firebase `dogState`; Puppy Event companion ownership, hourly movement, and free-roaming position/pose are shared across devices. Legacy `bloom_dog_companion` localStorage state is cleared.
+- `script.js` (v18): Dog state now syncs through Firebase `dogState`; Puppy Event companion ownership, hourly movement, and free-roaming position/pose are shared across devices. Dogs wait for shared Firebase state before rendering, preventing mobile/desktop opening mismatch. Legacy `bloom_dog_companion` localStorage state is cleared.
 - `style.css` (v23): `dog_presence_together_img` and `seed_fail_together_dog` widths added so together single-image assets display larger.
-- `index.html`: version bumps to style.css?v=23, script.js?v=17.
+- `index.html`: version bumps to style.css?v=23, script.js?v=18.
 - `images/white-puppy-idle.png`, `images/yellow-puppy-idle.png`: approved master idle puppy designs.
 - `images/puppy_pose_previews/`: generated/confirmed 8-pose preview sheet and individual preview crops.
 - `images/puppy_pose_assets/`: conservative transparent PNGs for 8 basic poses plus transparent review sheet; integrated via `DOG_ASSETS`.
@@ -228,7 +230,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Test two devices/browsers against the same deployment and confirm `dogState` keeps puppy placement/pose synchronized.
+- Push `aa1401e` to production, then test two devices/browsers against the same deployment and confirm `dogState` keeps puppy placement/pose synchronized.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
 

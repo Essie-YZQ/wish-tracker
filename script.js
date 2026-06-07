@@ -319,6 +319,7 @@ let dog_state = {
 
 // Entrance plays once per placement event; re-renders just use idle.
 let dog_has_entered = false;
+let dog_state_is_shared = false;
 
 const DOG_ASSETS = {
   white: {
@@ -468,6 +469,7 @@ function apply_shared_dog_state(raw) {
   const previous_owner = dog_state.companion_user_id;
 
   dog_state = next_state;
+  dog_state_is_shared = true;
   localStorage.removeItem('bloom_dog_companion');
 
   if (
@@ -490,12 +492,14 @@ async function apply_or_create_shared_dog_state(raw) {
 
   if (!applied) {
     randomize_dog_roaming();
+    dog_state_is_shared = true;
     await save_dog_state_to_firebase();
     return;
   }
 
   if (dog_state.companion_user_id && dog_state.companion_until <= Date.now()) {
     randomize_dog_roaming();
+    dog_state_is_shared = true;
     await save_dog_state_to_firebase();
   }
 }
@@ -563,6 +567,7 @@ async function set_dog_companion_mode(user_id, event = create_puppy_event()) {
   dog_state.companion_user_id = user_id;
   dog_state.companion_until   = Date.now() + 24 * 60 * 60 * 1000;
   dog_state.next_move_at      = Date.now() + DOG_MOVE_INTERVAL_MS;
+  dog_state_is_shared = true;
   dog_has_entered = false;
   localStorage.removeItem('bloom_dog_companion');
   await save_dog_state_to_firebase();
@@ -591,6 +596,7 @@ function move_companion_dogs() {
 }
 
 async function move_dogs_if_due(force = false) {
+  if (!dog_state_is_shared) return;
   if (!force && dog_state.next_move_at > Date.now()) return;
   if (dog_state.companion_user_id) {
     move_companion_dogs();
@@ -608,6 +614,8 @@ function start_dog_hourly_movement() {
 }
 
 function render_dog_presence_for(placement_id) {
+  if (!dog_state_is_shared) return '';
+
   const entries = dog_state.entries || [{ placement: dog_state.placement, pose_key: dog_state.pose_key }];
   const entry = entries.find(item => item.placement === placement_id);
   if (!entry) return '';
