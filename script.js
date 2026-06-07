@@ -76,6 +76,7 @@ async function loadFromFirebase() {
     applyHabitStatus(state.users[0].habits, data.sHabitStatus);
     applyHabitStatus(state.users[1].habits, data.kkHabitStatus);
     state.users.forEach(sync_vase_flowers_to_balance);
+    await apply_or_create_shared_dog_state(data.dogState);
 
     save_state(state);
     render_app();
@@ -87,7 +88,7 @@ async function loadFromFirebase() {
 function subscribeToFirebaseBalances() {
   const docRef = doc(db, "shared_state", "main");
 
-  onSnapshot(docRef, (docSnap) => {
+  onSnapshot(docRef, async (docSnap) => {
     if (!docSnap.exists()) {
       console.log("No such document!");
       return;
@@ -140,6 +141,14 @@ function subscribeToFirebaseBalances() {
     applyHabitStatus(state.users[0].habits, data.sHabitStatus);
     applyHabitStatus(state.users[1].habits, data.kkHabitStatus);
     state.users.forEach(sync_vase_flowers_to_balance);
+    const dog_changed = apply_shared_dog_state(data.dogState);
+
+    if (!dog_changed && !data.dogState) {
+      await apply_or_create_shared_dog_state(data.dogState);
+    } else if (dog_state.companion_user_id && dog_state.companion_until <= Date.now()) {
+      randomize_dog_roaming();
+      await save_dog_state_to_firebase();
+    }
 
     save_state(state);
     render_app();
@@ -295,7 +304,7 @@ const total_wishes = 30;
 // ─── Dog Presence System ────────────────────────────────────────────────────
 // Dogs are always visible somewhere on the page. They roam randomly across
 // the supported dog slots. After a Puppy Event, the selected puppy or puppy
-// pair stays in that user's card for 24 hours (persisted in localStorage).
+// pair stays in that user's card for 24 hours (synced through Firebase).
 // A newer Puppy Event transfers the companion and resets the timer.
 
 let dog_state = {
@@ -380,6 +389,117 @@ function dog_entries_signature(entries) {
     .join('|');
 }
 
+function is_valid_dog_pose_key(pose_key) {
+  if (typeof pose_key !== 'string' || !pose_key.includes('.')) return false;
+  const { color, pose } = parse_dog_pose_key(pose_key);
+  if (color === 'together') return Boolean(DOG_TOGETHER_ASSETS[pose]);
+  return Boolean(DOG_ASSETS[color]?.[pose]);
+}
+
+function normalize_dog_entries(entries) {
+  if (!Array.isArray(entries)) return null;
+
+  const normalized = [];
+  const seen_colors = new Set();
+  const seen_placements = new Set();
+
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue;
+    const placement = entry.placement;
+    const pose_key = entry.pose_key;
+    if (!DOG_PLACEMENTS.includes(placement) || !is_valid_dog_pose_key(pose_key)) continue;
+
+    if (pose_key.startsWith('together.')) {
+      return [{ placement, pose_key }];
+    }
+
+    const { color } = parse_dog_pose_key(pose_key);
+    if (seen_colors.has(color) || seen_placements.has(placement)) continue;
+    seen_colors.add(color);
+    seen_placements.add(placement);
+    normalized.push({ placement, pose_key });
+    if (normalized.length >= 2) break;
+  }
+
+  return normalized.length ? normalized : null;
+}
+
+function normalize_shared_dog_state(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const entries = normalize_dog_entries(raw.entries);
+  if (!entries) return null;
+
+  const placement = DOG_PLACEMENTS.includes(raw.placement) ? raw.placement : entries[0].placement;
+  const pose_key = is_valid_dog_pose_key(raw.pose_key) ? raw.pose_key : entries[0].pose_key;
+  const event_kind = ['white', 'yellow', 'together'].includes(raw.event_kind) ? raw.event_kind : null;
+  const companion_user_id = DOG_PLACEMENTS.slice(0, 2).includes(raw.companion_user_id) ? raw.companion_user_id : null;
+
+  return {
+    placement,
+    pose_key,
+    entries,
+    event_kind,
+    companion_user_id,
+    companion_until: Number(raw.companion_until) || 0,
+    next_move_at: Number(raw.next_move_at) || 0,
+  };
+}
+
+function serialize_dog_state() {
+  const entries = normalize_dog_entries(dog_state.entries) || [{ placement: dog_state.placement, pose_key: dog_state.pose_key }];
+  return {
+    placement: entries[0].placement,
+    pose_key: entries[0].pose_key,
+    entries,
+    event_kind: dog_state.event_kind || null,
+    companion_user_id: dog_state.companion_user_id || null,
+    companion_until: Number(dog_state.companion_until) || 0,
+    next_move_at: Number(dog_state.next_move_at) || 0,
+    updated_at: Date.now(),
+  };
+}
+
+function apply_shared_dog_state(raw) {
+  const next_state = normalize_shared_dog_state(raw);
+  if (!next_state) return false;
+
+  const previous_signature = dog_entries_signature(dog_state.entries);
+  const previous_owner = dog_state.companion_user_id;
+
+  dog_state = next_state;
+  localStorage.removeItem('bloom_dog_companion');
+
+  if (
+    dog_entries_signature(dog_state.entries) !== previous_signature ||
+    dog_state.companion_user_id !== previous_owner
+  ) {
+    dog_has_entered = false;
+  }
+
+  return true;
+}
+
+async function save_dog_state_to_firebase() {
+  const docRef = doc(db, "shared_state", "main");
+  await updateDoc(docRef, { dogState: serialize_dog_state() });
+}
+
+async function apply_or_create_shared_dog_state(raw) {
+  const applied = apply_shared_dog_state(raw);
+
+  if (!applied) {
+    randomize_dog_roaming();
+    await save_dog_state_to_firebase();
+    return;
+  }
+
+  if (dog_state.companion_user_id && dog_state.companion_until <= Date.now()) {
+    randomize_dog_roaming();
+    await save_dog_state_to_firebase();
+  }
+}
+
 function create_puppy_event() {
   const roll = Math.random();
   if (roll < 0.34) {
@@ -434,7 +554,7 @@ function randomize_dog_roaming() {
   dog_has_entered = false;
 }
 
-function set_dog_companion_mode(user_id, event = create_puppy_event()) {
+async function set_dog_companion_mode(user_id, event = create_puppy_event()) {
   const entries = create_companion_entries(user_id, event);
   dog_state.placement = user_id;
   dog_state.pose_key  = entries[0].pose_key;
@@ -444,37 +564,17 @@ function set_dog_companion_mode(user_id, event = create_puppy_event()) {
   dog_state.companion_until   = Date.now() + 24 * 60 * 60 * 1000;
   dog_state.next_move_at      = Date.now() + DOG_MOVE_INTERVAL_MS;
   dog_has_entered = false;
-  localStorage.setItem('bloom_dog_companion', JSON.stringify({
-    user_id,
-    until: dog_state.companion_until,
-    event_kind: event.kind,
-  }));
+  localStorage.removeItem('bloom_dog_companion');
+  await save_dog_state_to_firebase();
 }
 
 function init_dog_state() {
-  const saved = localStorage.getItem('bloom_dog_companion');
-  if (saved) {
-    const c = JSON.parse(saved);
-    if (c.until > Date.now()) {
-      const kind = c.event_kind || 'together';
-      const pose_key = pick_one(kind === 'white' ? WHITE_ROAM_POSES : kind === 'yellow' ? YELLOW_ROAM_POSES : TOGETHER_ROAM_POSES);
-      dog_state.placement          = c.user_id;
-      dog_state.pose_key           = pose_key;
-      dog_state.entries            = [{ placement: c.user_id, pose_key }];
-      dog_state.event_kind         = kind;
-      dog_state.companion_user_id  = c.user_id;
-      dog_state.companion_until    = c.until;
-      dog_state.next_move_at       = Date.now() + DOG_MOVE_INTERVAL_MS;
-      return;
-    }
-    localStorage.removeItem('bloom_dog_companion');
-  }
+  localStorage.removeItem('bloom_dog_companion');
   randomize_dog_roaming();
 }
 
 function move_companion_dogs() {
   if (!dog_state.companion_user_id || dog_state.companion_until <= Date.now()) {
-    localStorage.removeItem('bloom_dog_companion');
     randomize_dog_roaming();
     return;
   }
@@ -490,7 +590,7 @@ function move_companion_dogs() {
   dog_has_entered = false;
 }
 
-function move_dogs_if_due(force = false) {
+async function move_dogs_if_due(force = false) {
   if (!force && dog_state.next_move_at > Date.now()) return;
   if (dog_state.companion_user_id) {
     move_companion_dogs();
@@ -498,10 +598,13 @@ function move_dogs_if_due(force = false) {
     randomize_dog_roaming();
   }
   render_app();
+  await save_dog_state_to_firebase();
 }
 
 function start_dog_hourly_movement() {
-  setInterval(() => move_dogs_if_due(), 60 * 1000);
+  setInterval(() => {
+    move_dogs_if_due().catch((error) => console.error("Dog movement sync failed:", error));
+  }, 60 * 1000);
 }
 
 function render_dog_presence_for(placement_id) {
@@ -2150,7 +2253,7 @@ async function perform_mystery_seed_draw(user_id) {
     const puppy_event = create_puppy_event();
     save_state(state);
     await saveBalancesToFirebase(state);
-    set_dog_companion_mode(user_id, puppy_event);
+    await set_dog_companion_mode(user_id, puppy_event);
     render_app();
     show_seed_fail_reveal(user_id, puppy_event);
   }
@@ -2312,5 +2415,6 @@ function format_display_date(date_value) {
   return `${month}/${day}/${year}`;
 }
 
-loadFromFirebase();
-subscribeToFirebaseBalances();
+loadFromFirebase()
+  .catch((error) => console.error("Initial Firebase load failed:", error))
+  .finally(() => subscribeToFirebaseBalances());

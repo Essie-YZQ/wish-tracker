@@ -11,6 +11,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 - Puppy Companion System shipped to production.
 - Approved idle puppy designs are the master visual references for future puppy assets.
+- Puppy location/pose state now syncs through Firebase so S and Kang see the same dogs.
 - Next work should focus on visual QA and optional placement expansion beyond S / Kang / Pool cards.
 
 ---
@@ -18,7 +19,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=16` (pushed to production)
+- Asset versions: `style.css?v=23`, `script.js?v=17` (local, not yet pushed)
 - Latest production commit: `3129fc8 Add puppy companion system assets`
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
@@ -107,12 +108,15 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 #### Dog state machine (`dog_state` in script.js)
 - **Roaming mode** (default): dogs appear randomly in the currently supported dog slots (S card, KK card, pool card).
-  - On each page load and every hour, a new position and pose are selected.
+  - Dog position/pose is synced through Firebase field `dogState`, so different devices see the same dog scene.
+  - If Firebase has no `dogState` yet, the app creates one shared roaming state.
+  - Every hour, a new position and pose are selected and written back to Firebase.
   - Possible configs: white dog alone, yellow dog alone, white/yellow separated into different cards, or both together as one image.
   - `dog_state.entries` stores one or more `{placement, pose_key}` entries so separated dogs can render in different cards at the same time.
   - Poses are drawn from approved single-dog assets and together moment assets.
 - **Companion mode** (after puppy event): the selected puppy event goes to the user's card for 24 hours.
-  - Stored in `localStorage` as `bloom_dog_companion` with `{user_id, until, event_kind}`.
+  - Stored in Firebase `dogState` with `companion_user_id`, `companion_until`, `event_kind`, `entries`, and `next_move_at`.
+  - Legacy `localStorage` key `bloom_dog_companion` is removed on load and no longer used as the source of truth.
   - Event kinds: white puppy only, yellow puppy only, or one together image containing exactly two puppies.
   - If another user triggers a puppy event within 24h, companion ownership transfers to the newest user and timer resets.
   - Every hour during companion mode, the companion keeps the same owner/card but changes pose within the same event kind.
@@ -174,6 +178,7 @@ sWeeklySources, kkWeeklySources    arrays of emoji
 sVaseFlowers, kkVaseFlowers        arrays of flower IDs
 sUnlockedFlowers, kkUnlockedFlowers arrays of flower IDs
 sHabitStatus, kkHabitStatus        objects
+dogState                           object for shared puppy position/pose/companion timer
 history                            array
 ```
 
@@ -194,15 +199,15 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 - **White dog visibility**: white body on light lavender card has low natural contrast. Mitigated with CSS `drop-shadow`. If card background changes, may need to revisit.
 - **New basic pose transparent assets**: current cutouts intentionally keep a visible soft cream safety halo around puppies to preserve body pixels. They may need edge refinement later, but they are integrated now so the tracker does not reference deleted legacy assets.
-- The dog presence system is session-persistent (roaming changes on page refresh). Companion state persists 24h via localStorage.
+- Hourly dog movement can be written by whichever open device notices the timer first; last write wins. This is acceptable for now, but a Firestore transaction/lease could make it stricter later.
 
 ---
 
 ## Files Changed This Session
 
-- `script.js` (v16): Puppy Event logic now randomizes one event and reuses it for overlay + companion assignment; hourly movement added; `dog_state.entries` supports separated white/yellow puppies in different cards.
+- `script.js` (v17): Dog state now syncs through Firebase `dogState`; Puppy Event companion ownership, hourly movement, and free-roaming position/pose are shared across devices. Legacy `bloom_dog_companion` localStorage state is cleared.
 - `style.css` (v23): `dog_presence_together_img` and `seed_fail_together_dog` widths added so together single-image assets display larger.
-- `index.html`: version bumps to style.css?v=23, script.js?v=16.
+- `index.html`: version bumps to style.css?v=23, script.js?v=17.
 - `images/white-puppy-idle.png`, `images/yellow-puppy-idle.png`: approved master idle puppy designs.
 - `images/puppy_pose_previews/`: generated/confirmed 8-pose preview sheet and individual preview crops.
 - `images/puppy_pose_assets/`: conservative transparent PNGs for 8 basic poses plus transparent review sheet; integrated via `DOG_ASSETS`.
@@ -213,9 +218,9 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Pending Work / Open Questions
 
-- Visual check production puppy display on S / Kang / Pool cards.
+- Visual check shared puppy display on S / Kang / Pool cards across mobile and desktop.
 - Consider: refine transparent edges on the new basic pose assets, reducing cream halo without removing white puppy body.
-- Visual check hourly movement and Puppy Event companion transfer behavior.
+- Visual check hourly movement and Puppy Event companion transfer behavior across two devices.
 - Future UI expansion: add dog render slots beyond S/KK/pool, such as weekly section, vase/flower area, empty decorative spaces, and outside-card positions.
 - Future puppy moments expansion requested: kissing/hugging variations, more walking together, and additional scene-like interactions.
 
@@ -223,7 +228,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Open production URL and visually check `script.js?v=16` behavior: Puppy Event overlay count, 24h companion ownership, and hourly movement.
+- Test two devices/browsers against the same deployment and confirm `dogState` keeps puppy placement/pose synchronized.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
 
@@ -238,11 +243,11 @@ Repository files do not store test unlock state. Flower unlock progress persists
 - The dog PNG files in `images/` were extracted from `images/sprite_sheet.png`. Keep that file.
 - Official puppy design references are now `white-puppy-idle.png` and `yellow-puppy-idle.png`, not the older extracted `s-sit.png` / `k-sit.png` files.
 - The older `s-*.png`, `k-*.png`, and `together-*.png` files were deleted and should not be referenced by app code.
-- `dog_has_entered` is a module-level boolean. It resets when placement changes (randomize_dog_roaming or set_dog_companion_mode). This prevents re-entrance on Firebase re-renders.
+- `dog_has_entered` is a module-level boolean. It resets when placement/owner changes locally or through Firebase. This prevents re-entrance on ordinary Firebase re-renders.
 
 ---
 
 ## Last Updated
 
 - Last updated by: Codex
-- Last updated date: 2026-06-06
+- Last updated date: 2026-06-07
