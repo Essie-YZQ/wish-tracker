@@ -20,7 +20,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
 - Asset versions: `style.css?v=23`, `script.js?v=18`
-- Latest local commit: `aa1401e Ensure puppy state renders from Firebase`
+- Latest dog sync code commit: `7475a63 Ensure puppy state renders from Firebase`
 - Latest production commit: `3129fc8 Add puppy companion system assets` (dog sync not pushed yet)
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
@@ -230,7 +230,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Push `aa1401e` to production, then test two devices/browsers against the same deployment and confirm `dogState` keeps puppy placement/pose synchronized.
+- Push latest `main` to production, then test two devices/browsers against the same deployment and confirm `dogState` keeps puppy placement/pose synchronized.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
 
