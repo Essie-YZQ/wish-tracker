@@ -1,6 +1,17 @@
 import { db } from './firebase.js?v=2';
 import { doc, getDoc, updateDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
+// Serializes read -> mutate -> save -> push-to-Firebase actions so overlapping calls
+// (e.g. checking off several habits in quick succession) can't interleave and clobber
+// each other's writes with a stale captured state.
+let balance_sync_queue = Promise.resolve();
+
+function run_serialized(task) {
+  const run = balance_sync_queue.then(task, task);
+  balance_sync_queue = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 function applyHabitStatus(habits, habitStatusData) {
   if (!habitStatusData || typeof habitStatusData !== "object") return;
 
@@ -848,6 +859,10 @@ function handle_click(event) {
 }
 
 async function clear_vase(user_id) {
+  return run_serialized(() => run_clear_vase(user_id));
+}
+
+async function run_clear_vase(user_id) {
   const state = get_state();
   const user  = state.users.find(u => u.user_id === user_id);
   if (!user) return;
@@ -858,6 +873,10 @@ async function clear_vase(user_id) {
 }
 
 async function shuffle_vase(user_id) {
+  return run_serialized(() => run_shuffle_vase(user_id));
+}
+
+async function run_shuffle_vase(user_id) {
   const state = get_state();
   const user  = state.users.find(u => u.user_id === user_id);
   if (!user || user.wish_balance === 0) return;
@@ -874,6 +893,10 @@ async function shuffle_vase(user_id) {
 }
 
 async function pick_flower(user_id, flower_id) {
+  return run_serialized(() => run_pick_flower(user_id, flower_id));
+}
+
+async function run_pick_flower(user_id, flower_id) {
   const state = get_state();
   const user  = state.users.find(u => u.user_id === user_id);
   if (!user) return;
@@ -1948,6 +1971,10 @@ function render_actions(state) {
 }
 
 async function toggle_habit_day(user_id, habit_id, date_value) {
+  return run_serialized(() => run_toggle_habit_day(user_id, habit_id, date_value));
+}
+
+async function run_toggle_habit_day(user_id, habit_id, date_value) {
   console.log("toggle_habit_day called", user_id, habit_id, date_value);
   const state = get_state();
   const user = state.users.find((item) => item.user_id === user_id);
@@ -2007,6 +2034,10 @@ function sync_reward_status(state, user, habit, current_week_start) {
 }
 
 async function perform_balance_action(action_type, action_button) {
+  return run_serialized(() => run_perform_balance_action(action_type, action_button));
+}
+
+async function run_perform_balance_action(action_type, action_button) {
   const state = await getLatestStateFromFirebase();
   const current_user_id = action_button?.dataset.userId;
   const other_user_id = action_button?.dataset.otherUserId;
