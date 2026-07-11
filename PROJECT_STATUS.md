@@ -9,6 +9,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
+- A wish-balance race condition bug is fixed and deployed (2026-07-08) — see "Wish Balance Sync Bug Fix" below.
 - Puppy Companion System and Firebase dog sync are shipped to production.
 - Approved idle puppy designs are the master visual references for future puppy assets.
 - Puppy location/pose state now syncs through Firebase so S and Kang see the same dogs.
@@ -19,9 +20,9 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=18`
-- Latest dog sync code commit: `7475a63 Ensure puppy state renders from Firebase`
-- Production branch: `origin/main` includes the Firebase dog sync fix.
+- Asset versions: `style.css?v=23`, `script.js?v=19`
+- Latest code commit: `fde0e9c Serialize wish balance mutations to fix lost increments and pool zeroing`
+- Production branch: `origin/main` includes the wish-balance race fix and the Firebase dog sync fix.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
@@ -148,6 +149,23 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 - Shows `+ 📚 💪 this week` under each user's balance.
 - Bug fixed (2026-06-01): stale icons from previous week prevented by storing `weekStart` in Firebase.
 
+### Wish Balance Sync Bug Fix (2026-07-08)
+
+**Reported symptoms:**
+- Checking a habit sometimes showed the confetti animation but the wish balance did not actually increase (intermittent — worked fine other times).
+- KK's wish pool balance once reset to zero for no visible reason.
+
+**Root cause:** every action that mutates balances (`toggle_habit_day`, `perform_balance_action`, `pick_flower`, `clear_vase`, `shuffle_vase` in `script.js`) reads the full local state, mutates it, saves it locally, then asynchronously pushes **all three** balance fields (`sBalance`, `kkBalance`, `poolBalance`) to Firestore from that captured snapshot — not just the field the action changed. None of these were serialized against each other, and `toggle_habit_day` is fired from the click handler without `await`. Checking off multiple habits quickly fired overlapping calls; if an earlier call's Firestore write resolved after a later one's, its stale captured snapshot silently overwrote the newer data, including balance fields it never touched (the other user's balance, the pool). This matches both reported symptoms.
+
+**Fix:** added a `run_serialized()` promise queue at the top of `script.js` and routed all five mutate-and-push functions through it, so each read → mutate → save → push cycle fully completes before the next one starts. No architecture change and no unrelated cleanup — scoped strictly to these two symptoms per owner's request.
+
+**Verified via:** full code trace of the read/mutate/save/push cycle across all five functions, plus a standalone Node.js simulation (outside the app) that reproduced the exact lost-update pattern before the fix and confirmed it no longer occurs after the fix. Could not click-test live in a browser — no headless browser tool (chromium-cli/playwright) was available in the environment, and this app's Firestore document (`shared_state/main`) holds S and KK's real production balances, so it wasn't safe to poke at interactively for a test.
+
+**Residual risk (not fixed, lower priority):** the one-shot `loadFromFirebase()` call at page load isn't routed through the same queue, so an action taken in the very first instant after page load could theoretically still race it. Much narrower window than the bug that was fixed. Revisit if balance issues recur specifically right after opening the app.
+
+- Code commit: `fde0e9c Serialize wish balance mutations to fix lost increments and pool zeroing`
+- `script.js` bumped to `?v=19`.
+
 ---
 
 ## All Product & Design Decisions
@@ -202,14 +220,19 @@ Repository files do not store test unlock state. Flower unlock progress persists
 - **White dog visibility**: white body on light lavender card has low natural contrast. Mitigated with CSS `drop-shadow`. If card background changes, may need to revisit.
 - **New basic pose transparent assets**: current cutouts intentionally keep a visible soft cream safety halo around puppies to preserve body pixels. They may need edge refinement later, but they are integrated now so the tracker does not reference deleted legacy assets.
 - Hourly dog movement can be written by whichever open device notices the timer first; last write wins. This is acceptable for now, but a Firestore transaction/lease could make it stricter later.
+- `loadFromFirebase()` (one-shot fetch at page load) is not routed through the `run_serialized()` queue added 2026-07-08, so it could theoretically still race a user action taken in the very first instant after page load. See "Wish Balance Sync Bug Fix" above.
 
 ---
 
 ## Files Changed This Session
 
+- `script.js` (v19): added `run_serialized()` promise queue; routed `toggle_habit_day`, `perform_balance_action`, `pick_flower`, `clear_vase`, `shuffle_vase` through it to fix the wish-balance race condition described above.
+- `index.html`: version bump to `script.js?v=19`.
+
+### Previous Session (Dog Sync)
+
 - `script.js` (v18): Dog state now syncs through Firebase `dogState`; Puppy Event companion ownership, hourly movement, and free-roaming position/pose are shared across devices. Dogs wait for shared Firebase state before rendering, preventing mobile/desktop opening mismatch. Legacy `bloom_dog_companion` localStorage state is cleared.
 - `style.css` (v23): `dog_presence_together_img` and `seed_fail_together_dog` widths added so together single-image assets display larger.
-- `index.html`: version bumps to style.css?v=23, script.js?v=18.
 - `images/white-puppy-idle.png`, `images/yellow-puppy-idle.png`: approved master idle puppy designs.
 - `images/puppy_pose_previews/`: generated/confirmed 8-pose preview sheet and individual preview crops.
 - `images/puppy_pose_assets/`: conservative transparent PNGs for 8 basic poses plus transparent review sheet; integrated via `DOG_ASSETS`.
@@ -220,6 +243,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Pending Work / Open Questions
 
+- Confirm with S and KK that the confetti/balance-not-increasing issue and the pool-zeroing issue don't recur, especially when checking off multiple habits quickly in a row.
 - Visual check shared puppy display on S / Kang / Pool cards across mobile and desktop.
 - Consider: refine transparent edges on the new basic pose assets, reducing cream halo without removing white puppy body.
 - Visual check hourly movement and Puppy Event companion transfer behavior across two devices.
@@ -230,6 +254,8 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
+- Both users should reload the app and try checking off several habits quickly in a row to confirm the balance race condition is resolved.
+- If balance issues ever recur specifically right after opening the app (not mid-session), investigate the `loadFromFirebase()` residual risk noted in Known Issues.
 - Test two devices/browsers against the production deployment and confirm `dogState` keeps puppy placement/pose synchronized.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
@@ -251,5 +277,5 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Last Updated
 
-- Last updated by: Codex
-- Last updated date: 2026-06-07
+- Last updated by: Claude
+- Last updated date: 2026-07-11
