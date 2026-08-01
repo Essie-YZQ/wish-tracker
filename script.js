@@ -722,10 +722,10 @@ const sample_users = [
     total_spent: 0,
     habits: [
       { habit_id: "s_study", habit_name: "study", display_name: "Study", icon: "📚", target_per_week: 3, reward_value: 1 },
-      { habit_id: "s_sleep_early", habit_name: "sleep_early", display_name: "Sleep Early", icon: "🌙", target_per_week: 7, reward_value: 1 },
+      { habit_id: "s_sleep_early", habit_name: "sleep_early", display_name: "Sleep Early", icon: "🌙", target_per_week: 5, reward_value: 1 },
       { habit_id: "s_workout", habit_name: "workout", display_name: "Workout", icon: "💪", target_per_week: 2, reward_value: 1 },
       { habit_id: "s_cooking", habit_name: "cooking", display_name: "Cooking", icon: "🍜", target_per_week: 3, reward_value: 1 },
-      { habit_id: "s_drink_water", habit_name: "drink_water", display_name: "Drink Water", icon: "💧", target_per_week: 7, reward_value: 1 },
+      { habit_id: "s_drink_water", habit_name: "drink_water", display_name: "Drink Water", icon: "💧", target_per_week: 5, reward_value: 1 },
       { habit_id: "s_dry_hair", habit_name: "dry_hair", display_name: "Dry Hair", icon: "💁🏻‍♀️", target_per_week: 3, reward_value: 1 },
       { habit_id: "s_practice_violin", habit_name: "practice_violin", display_name: "Practice Violin", icon: "🎻", target_per_week: 2, reward_value: 1 },
       { habit_id: "s_foot_soak", habit_name: "foot_soak", display_name: "Foot Soak", icon: "♨️", target_per_week: 3, reward_value: 1 },
