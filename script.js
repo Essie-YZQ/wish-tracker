@@ -12,6 +12,13 @@ function run_serialized(task) {
   return run;
 }
 
+function compute_weekly_sources(user) {
+  return [
+    ...user.weekly_transfer_icons,
+    ...user.habits.filter((h) => h.is_reward_claimed).map((h) => h.icon)
+  ];
+}
+
 function applyHabitStatus(habits, habitStatusData) {
   if (!habitStatusData || typeof habitStatusData !== "object") return;
 
@@ -212,34 +219,30 @@ async function getLatestStateFromFirebase() {
   return state;
 }
 
-async function saveBalancesToFirebase(state, habit_user_id = null, balance_deltas = null) {
+async function saveBalancesToFirebase(state, habit_user_id = null, balance_deltas = null, changed_source_user_ids = []) {
   const docRef = doc(db, "shared_state", "main");
-
-  // 👇 收集 S 的 weekly 来源
-  const sSources = [
-    ...state.users[0].weekly_transfer_icons,
-    ...state.users[0].habits
-      .filter(h => h.is_reward_claimed)
-      .map(h => h.icon)
-  ];
-
-  // 👇 收集 KK 的 weekly 来源
-  const kkSources = [
-    ...state.users[1].weekly_transfer_icons,
-    ...state.users[1].habits
-      .filter(h => h.is_reward_claimed)
-      .map(h => h.icon)
-  ];
 
   const update = {
     weekStart: state.week_start_date,
-    sWeeklySources: sSources,
-    kkWeeklySources: kkSources,
     sVaseFlowers: state.users[0].vase_flowers || [],
     kkVaseFlowers: state.users[1].vase_flowers || [],
     sUnlockedFlowers: state.users[0].unlocked_flowers || ['snowdrop'],
     kkUnlockedFlowers: state.users[1].unlocked_flowers || ['snowdrop']
   };
+
+  // Weekly-source icons are only pushed for a user whose sources actually changed in
+  // this action. Every action used to recompute and overwrite BOTH users' arrays from
+  // local state every time, even for actions (like returning a wish to the pool) that
+  // never touch anyone's sources -- if this device's local copy of the OTHER user's
+  // habit claims or transfer icons was stale, that overwrite would silently clobber
+  // their real weekly-sources display. Same root cause as the balance bug, same fix
+  // shape: don't push a field this action didn't actually change.
+  if (changed_source_user_ids.includes('s')) {
+    update.sWeeklySources = compute_weekly_sources(state.users[0]);
+  }
+  if (changed_source_user_ids.includes('kk')) {
+    update.kkWeeklySources = compute_weekly_sources(state.users[1]);
+  }
 
   // Balance fields are pushed as atomic deltas (Firestore increment()), never as an
   // absolute value read from local state. Local state can be stale (this device missed
@@ -312,12 +315,17 @@ async function saveWeeklySnapshot(state) {
   console.log("Saved weekly snapshot:", currentSnapshot);
 }
 
-async function resetWeeklySourcesInFirebase() {
+async function resetWeeklySourcesInFirebase(current_week_start) {
   const docRef = doc(db, "shared_state", "main");
 
+  // weekStart must be updated together with clearing the arrays -- otherwise clients
+  // gate reading the (correctly cleared) sWeeklySources/kkWeeklySources on weekStart
+  // matching the current week, and would keep showing last week's leftover icons until
+  // some unrelated action happened to push a fresh weekStart.
   await updateDoc(docRef, {
     sWeeklySources: [],
-    kkWeeklySources: []
+    kkWeeklySources: [],
+    weekStart: current_week_start
   });
 
   console.log("Weekly sources reset in Firebase");
@@ -958,7 +966,7 @@ function get_state() {
 
   if (parsed_state.week_start_date !== current_week_start) {
   const refreshed_state = rollover_to_current_week(parsed_state, current_week_start);
-  resetWeeklySourcesInFirebase();
+  resetWeeklySourcesInFirebase(current_week_start);
   normalize_balances(refreshed_state);
   save_state(refreshed_state);
   return refreshed_state;
@@ -2020,7 +2028,7 @@ async function run_toggle_habit_day(user_id, habit_id, date_value) {
   if (just_earned) {
     confetti({ particleCount: 80, spread: 75, origin: { y: 0.65 }, colors: ["#cf7b58", "#e8a87c", "#f5d5c0", "#b85c38"] });
   }
-  await saveBalancesToFirebase(state, user_id, balance_deltas);
+  await saveBalancesToFirebase(state, user_id, balance_deltas, [user_id]);
   await saveWeeklySnapshot(state);
 }
 
@@ -2073,6 +2081,10 @@ async function run_perform_balance_action(action_type, action_button) {
     kk: state.users[1].wish_balance,
     pool: state.pool_balance
   };
+  const sources_before = {
+    s: compute_weekly_sources(state.users[0]).join(","),
+    kk: compute_weekly_sources(state.users[1]).join(",")
+  };
 
   switch (action_type) {
     case "give_to_other":
@@ -2099,9 +2111,12 @@ const balance_deltas = {
   kk: state.users[1].wish_balance - balances_before.kk,
   pool: state.pool_balance - balances_before.pool
 };
+const changed_source_user_ids = ['s', 'kk'].filter(
+  (id) => compute_weekly_sources(state.users[id === 's' ? 0 : 1]).join(",") !== sources_before[id]
+);
 
 save_state(state);
-await saveBalancesToFirebase(state, null, balance_deltas);
+await saveBalancesToFirebase(state, null, balance_deltas, changed_source_user_ids);
 render_app();
 }
 

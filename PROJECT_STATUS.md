@@ -10,6 +10,8 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Priority
 
 - The wish-balance race condition recurred after the 2026-07-08 fix and has been fixed again, more thoroughly, on 2026-07-11 — see "Wish Balance Sync Bug Fix (Round 2)" below. The 2026-07-08 fix was necessary but not sufficient.
+- The weekly-sources emoji row (which habits earned wishes this week) had the same class of bug and was fixed the same day — see "Weekly Sources Display Bug Fix (2026-07-11)" below.
+- S's `drink_water` and `sleep_early` weekly targets lowered from 7 to 5 (2026-07-11, owner request).
 - Puppy Companion System and Firebase dog sync are shipped to production.
 - Approved idle puppy designs are the master visual references for future puppy assets.
 - Puppy location/pose state now syncs through Firebase so S and Kang see the same dogs.
@@ -20,9 +22,9 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=20`
-- Latest code commit: see "Wish Balance Sync Bug Fix (Round 2)" below for the commit hash once pushed.
-- Production branch: `origin/main` includes the wish-balance race fix (both rounds) and the Firebase dog sync fix.
+- Asset versions: `style.css?v=23`, `script.js?v=22`
+- Latest code commit: see "Weekly Sources Display Bug Fix" below for the commit hash once pushed.
+- Production branch: `origin/main` includes the wish-balance race fix (both rounds), the weekly-sources fix, the target_per_week change, and the Firebase dog sync fix.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
@@ -146,8 +148,8 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 - `.dog_idle`: breathing animation via `dog_alive` keyframe.
 
 ### Weekly Sources Display
-- Shows `+ 📚 💪 this week` under each user's balance.
-- Bug fixed (2026-06-01): stale icons from previous week prevented by storing `weekStart` in Firebase.
+- Shows `+ 📚 💪 this week` under each user's balance — which habits/transfers earned wishes this week.
+- Bug fixed (2026-06-01): stale icons from previous week prevented by storing `weekStart` in Firebase. This turned out to be incomplete — see the 2026-07-11 fix below, which found the underlying `weekStart`-update mechanism itself was broken.
 
 ### Wish Balance Sync Bug Fix (2026-07-08)
 
@@ -183,6 +185,23 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 **Also investigated and ruled out as a real bug:** an early version of the test (using a naive polling-only fake Firestore with no local-write echo) showed the same-tab scenario reverting a just-checked day. Tracing it down: this was an artifact of the fake not modeling Firestore's real "read-your-own-writes" guarantee (a client's own pending writes are reflected in its own listeners immediately, before any network round trip). Rebuilding the fake to match that guarantee made the scenario pass consistently, and reasoning through the real SDK's documented behavior confirms a single client's own listener cannot see stale data behind its own writes. No code change was needed for this; noted here so a future session doesn't have to rediscover it.
 
 - `script.js` bumped to `?v=20`.
+
+### Weekly Sources Display Bug Fix (2026-07-11)
+
+**Reported symptom:** the emoji row under each user's balance ("earned this week from...") often doesn't update, and sometimes shows icons left over from *last* week instead of this week's.
+
+**Two distinct root causes found, both in the same area as the balance bug above:**
+
+1. **`sWeeklySources`/`kkWeeklySources` were pushed as absolute values for BOTH users, unconditionally, on every single balance-mutating write** — `saveBalancesToFirebase()` recomputed and sent both arrays from local state regardless of which user's (if anyone's) sources actually changed in that action. `return_to_pool`/`withdraw_from_pool`/`perform_mystery_seed_draw` never touch sources at all, yet were still overwriting both users' arrays with whatever this device's local (possibly stale) copy happened to be. Worse: `perform_balance_action` builds its state via `getLatestStateFromFirebase()`, which fetches fresh balances but does **not** fetch fresh habit-claim status — so the habit-derived half of the sources computation was *always* working from local cache in this path, not the true server value. This is the dominant cause of "often doesn't update" — nearly any give/return/withdraw/undo action could silently stomp the display.
+2. **`resetWeeklySourcesInFirebase()` (called on week rollover) cleared the arrays but never updated `weekStart`.** Since reads gate applying `sWeeklySources`/`kkWeeklySources` on `data.weekStart === current_week`, a device would ignore the (correctly cleared) remote arrays until *some unrelated action* happened to also push a fresh `weekStart` — in the meantime a still-loading device could keep showing last week's icons. This is the "leftover from last week" half of the symptom.
+
+**Fix:**
+1. `saveBalancesToFirebase()` now takes a `changed_source_user_ids` argument (e.g. `['s']`, `['kk']`, both, or neither) and only includes `sWeeklySources`/`kkWeeklySources` in the update for a user actually in that list — mirroring the delta-scoping approach used for balances. `toggle_habit_day` passes the acting user; `perform_balance_action` computes it generically by diffing each user's derived sources before/after the switch statement (so `give_to_other`/`undo_last_action` correctly flag only the receiving user, `return_to_pool`/`withdraw_from_pool` correctly flag no one); `perform_mystery_seed_draw` and the vase actions pass none (they never touch sources).
+2. `resetWeeklySourcesInFirebase()` now takes the new week's start date and sets `weekStart` in the same `updateDoc()` call that clears the arrays.
+
+**Verified via:** the same real-browser-plus-fake-Firestore approach as the balance fix, three new scenarios: (1) one user claiming a habit while the other user's sources stay untouched, and vice versa when the second user acts; (2) a device with a deliberately-corrupted local cache (simulating "went stale while offline") taking an unrelated action, confirming it can't clobber the server's correct sources — this one reproducibly failed on the pre-fix code and passes on the fix; (3) a simulated week-boundary rollover (seeded localStorage from "last week" plus a real system clock in the current week), confirming `weekStart` gets updated on the server and the app doesn't display last week's icon — this also reproducibly failed on the pre-fix code (`weekStart` stayed on last week) and passes on the fix. All existing balance tests re-run afterward with no regressions. Test scaffolding cleaned up, none of it is part of the repo.
+
+- `script.js` bumped to `?v=22`.
 
 ---
 
@@ -244,6 +263,12 @@ Repository files do not store test unlock state. Flower unlock progress persists
 ---
 
 ## Files Changed This Session
+
+- `script.js` (v22): added `changed_source_user_ids` scoping to `saveBalancesToFirebase()` so `sWeeklySources`/`kkWeeklySources` are only pushed for a user whose sources actually changed; `resetWeeklySourcesInFirebase()` now also updates `weekStart`. See "Weekly Sources Display Bug Fix" above.
+- `script.js`: lowered S's `s_sleep_early` and `s_drink_water` `target_per_week` from 7 to 5.
+- `index.html`: version bump to `script.js?v=22`.
+
+### Earlier This Session (Wish Balance Fix, Round 2)
 
 - `script.js` (v20): switched all balance-mutating writes (`toggle_habit_day`, `perform_balance_action`, `perform_mystery_seed_draw`) to push Firestore `increment()` deltas instead of absolute values; `saveBalancesToFirebase()` now omits balance fields entirely when nothing changed. See "Wish Balance Sync Bug Fix, Round 2" above.
 - `index.html`: version bump to `script.js?v=20`.
