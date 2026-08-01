@@ -1,5 +1,5 @@
 import { db } from './firebase.js?v=2';
-import { doc, getDoc, updateDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, getDoc, updateDoc, onSnapshot, increment } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // Serializes read -> mutate -> save -> push-to-Firebase actions so overlapping calls
 // (e.g. checking off several habits in quick succession) can't interleave and clobber
@@ -212,7 +212,7 @@ async function getLatestStateFromFirebase() {
   return state;
 }
 
-async function saveBalancesToFirebase(state, habit_user_id = null) {
+async function saveBalancesToFirebase(state, habit_user_id = null, balance_deltas = null) {
   const docRef = doc(db, "shared_state", "main");
 
   // 👇 收集 S 的 weekly 来源
@@ -232,9 +232,6 @@ async function saveBalancesToFirebase(state, habit_user_id = null) {
   ];
 
   const update = {
-    sBalance: state.users[0].wish_balance,
-    kkBalance: state.users[1].wish_balance,
-    poolBalance: state.pool_balance,
     weekStart: state.week_start_date,
     sWeeklySources: sSources,
     kkWeeklySources: kkSources,
@@ -243,6 +240,23 @@ async function saveBalancesToFirebase(state, habit_user_id = null) {
     sUnlockedFlowers: state.users[0].unlocked_flowers || ['snowdrop'],
     kkUnlockedFlowers: state.users[1].unlocked_flowers || ['snowdrop']
   };
+
+  // Balance fields are pushed as atomic deltas (Firestore increment()), never as an
+  // absolute value read from local state. Local state can be stale (this device missed
+  // a realtime update, or another action is mid-flight); an absolute overwrite would
+  // silently clobber whatever the true server value is. A delta is safe to apply no
+  // matter what order concurrent writes land in.
+  if (balance_deltas) {
+    if (balance_deltas.s) {
+      update.sBalance = increment(balance_deltas.s);
+    }
+    if (balance_deltas.kk) {
+      update.kkBalance = increment(balance_deltas.kk);
+    }
+    if (balance_deltas.pool) {
+      update.poolBalance = increment(balance_deltas.pool);
+    }
+  }
 
   if (habit_user_id) {
     const user = state.users.find(u => u.user_id === habit_user_id);
@@ -1992,15 +2006,21 @@ async function run_toggle_habit_day(user_id, habit_id, date_value) {
   habit.daily_status[date_value] = !habit.daily_status[date_value];
   habit.done_count = count_done_days(habit.daily_status);
   const was_claimed = habit.is_reward_claimed;
+  const wish_balance_before = user.wish_balance;
+  const pool_balance_before = state.pool_balance;
   sync_reward_status(state, user, habit, state.week_start_date);
   const just_earned = !was_claimed && habit.is_reward_claimed;
+  const balance_deltas = {
+    [user_id]: user.wish_balance - wish_balance_before,
+    pool: state.pool_balance - pool_balance_before
+  };
   console.log("before save", habit.daily_status, habit.done_count);
   save_state(state);
   render_app();
   if (just_earned) {
     confetti({ particleCount: 80, spread: 75, origin: { y: 0.65 }, colors: ["#cf7b58", "#e8a87c", "#f5d5c0", "#b85c38"] });
   }
-  await saveBalancesToFirebase(state, user_id);
+  await saveBalancesToFirebase(state, user_id, balance_deltas);
   await saveWeeklySnapshot(state);
 }
 
@@ -2048,6 +2068,12 @@ async function run_perform_balance_action(action_type, action_button) {
   state.message_user_id = null;
   console.log("perform_balance_action", action_type, current_user_id, other_user_id);
 
+  const balances_before = {
+    s: state.users[0].wish_balance,
+    kk: state.users[1].wish_balance,
+    pool: state.pool_balance
+  };
+
   switch (action_type) {
     case "give_to_other":
       give_to_other(current_user, other_user, state);
@@ -2068,8 +2094,14 @@ async function run_perform_balance_action(action_type, action_button) {
       return;
   }
 
+const balance_deltas = {
+  s: state.users[0].wish_balance - balances_before.s,
+  kk: state.users[1].wish_balance - balances_before.kk,
+  pool: state.pool_balance - balances_before.pool
+};
+
 save_state(state);
-await saveBalancesToFirebase(state);
+await saveBalancesToFirebase(state, null, balance_deltas);
 render_app();
 }
 
@@ -2278,6 +2310,7 @@ async function perform_mystery_seed_draw(user_id) {
   // Deduct the 2-wish cost regardless of outcome.
   user.wish_balance -= 2;
   state.last_action = null;
+  const balance_deltas = { [user_id]: -2 };
 
   const success = Math.random() < 0.20;
 
@@ -2285,13 +2318,13 @@ async function perform_mystery_seed_draw(user_id) {
     const new_flower = locked[Math.floor(Math.random() * locked.length)];
     user.unlocked_flowers = [...user.unlocked_flowers, new_flower];
     save_state(state);
-    await saveBalancesToFirebase(state);
+    await saveBalancesToFirebase(state, null, balance_deltas);
     render_app();
     show_seed_reveal(new_flower, user.name);
   } else {
     const puppy_event = create_puppy_event();
     save_state(state);
-    await saveBalancesToFirebase(state);
+    await saveBalancesToFirebase(state, null, balance_deltas);
     await set_dog_companion_mode(user_id, puppy_event);
     render_app();
     show_seed_fail_reveal(user_id, puppy_event);

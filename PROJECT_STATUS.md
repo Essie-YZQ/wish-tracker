@@ -9,7 +9,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- A wish-balance race condition bug is fixed and deployed (2026-07-08) — see "Wish Balance Sync Bug Fix" below.
+- The wish-balance race condition recurred after the 2026-07-08 fix and has been fixed again, more thoroughly, on 2026-07-11 — see "Wish Balance Sync Bug Fix (Round 2)" below. The 2026-07-08 fix was necessary but not sufficient.
 - Puppy Companion System and Firebase dog sync are shipped to production.
 - Approved idle puppy designs are the master visual references for future puppy assets.
 - Puppy location/pose state now syncs through Firebase so S and Kang see the same dogs.
@@ -20,9 +20,9 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=19`
-- Latest code commit: `fde0e9c Serialize wish balance mutations to fix lost increments and pool zeroing`
-- Production branch: `origin/main` includes the wish-balance race fix and the Firebase dog sync fix.
+- Asset versions: `style.css?v=23`, `script.js?v=20`
+- Latest code commit: see "Wish Balance Sync Bug Fix (Round 2)" below for the commit hash once pushed.
+- Production branch: `origin/main` includes the wish-balance race fix (both rounds) and the Firebase dog sync fix.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
@@ -166,6 +166,24 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 - Code commit: `fde0e9c Serialize wish balance mutations to fix lost increments and pool zeroing`
 - `script.js` bumped to `?v=19`.
 
+### Wish Balance Sync Bug Fix, Round 2 (2026-07-11)
+
+**Why round 1 wasn't enough:** the 2026-07-08 fix serialized calls on the *write* side (`toggle_habit_day` etc. against each other), but every one of those functions still pushed **absolute** balance values (`sBalance: state.users[0].wish_balance`, etc.) read from local state. The realtime `onSnapshot` listener (`subscribeToFirebaseBalances`) was never part of that queue and was never touched — it does its own unguarded read → merge → save cycle every time the shared Firestore document changes for *any* reason (a balance change, a vase change, even the hourly dog-state push touches the same doc). If this device's local copy of a balance was stale for any reason (most commonly: the other user's device pushed a change this device hadn't caught up on yet), the next local action — even an unrelated one like shuffling the vase — would still push the stale absolute number and silently overwrite the real value. This is exactly what happened again.
+
+**Root cause (this round):** absolute-value overwrites of `sBalance`/`kkBalance`/`poolBalance`, computed from local state that can be behind the real (server) value, sent on every balance-touching write regardless of whether the local copy was current.
+
+**Fix:** stopped sending absolute balance values entirely. `saveBalancesToFirebase()` now takes an optional `balance_deltas` argument and uses Firestore's `increment()` — an atomic server-side add — for only the fields that actually changed in that action; fields that didn't change are omitted from the update rather than re-sent. Every balance-mutating call site (`toggle_habit_day`, `perform_balance_action`, `perform_mystery_seed_draw`) now computes an explicit before/after delta and passes it through. `pick_flower`/`clear_vase`/`shuffle_vase` never touch balance, so they now correctly send no balance fields at all (previously they always re-sent all three, redundantly and dangerously). Because `increment()` is atomic and commutative on the server, the final value is correct no matter what order concurrent writes from different devices land in — this closes the bug class at the root instead of only reducing the race window.
+
+**Verified via:** built a lightweight fake Firestore backend (a real Node HTTP server modeling Firestore's `increment()` semantics and a client-side module mirroring the real SDK's "read-your-own-writes" optimistic-echo behavior for `onSnapshot`/`updateDoc`), since installing the real Firestore emulator wasn't possible (this machine's Java is too old, and installing a JDK just for this felt like overreach for a one-off test). Served the real, unmodified `index.html`/`script.js` and drove it with a real headless Chromium (Playwright), rerouting only the Firestore SDK import — the app code under test was byte-identical to what's committed. Three scenarios, each run several times for flakiness:
+1. Rapid same-tab clicking across two habits (9 clicks fired in one batch) → balance and pool end up exactly correct.
+2. Two independent browser contexts (simulating S's and KK's separate devices) acting concurrently → both balances and the pool end up exactly correct.
+3. An unrelated vase action on one device, right after the *other* device's balance changed server-side → the other device's change survives (this is the exact "KK's pool reset to zero" pattern).
+Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:script.js` at the time) as a control: scenarios 2 and 3 failed on the old code in the same way reported (the other user's balance got clobbered back down), confirming the test suite actually discriminates the bug and that the fix addresses it. Cleaned up all test scaffolding (temp server, temp app copy, temp Firestore fake) after — none of it is part of the repo.
+
+**Also investigated and ruled out as a real bug:** an early version of the test (using a naive polling-only fake Firestore with no local-write echo) showed the same-tab scenario reverting a just-checked day. Tracing it down: this was an artifact of the fake not modeling Firestore's real "read-your-own-writes" guarantee (a client's own pending writes are reflected in its own listeners immediately, before any network round trip). Rebuilding the fake to match that guarantee made the scenario pass consistently, and reasoning through the real SDK's documented behavior confirms a single client's own listener cannot see stale data behind its own writes. No code change was needed for this; noted here so a future session doesn't have to rediscover it.
+
+- `script.js` bumped to `?v=20`.
+
 ---
 
 ## All Product & Design Decisions
@@ -220,13 +238,19 @@ Repository files do not store test unlock state. Flower unlock progress persists
 - **White dog visibility**: white body on light lavender card has low natural contrast. Mitigated with CSS `drop-shadow`. If card background changes, may need to revisit.
 - **New basic pose transparent assets**: current cutouts intentionally keep a visible soft cream safety halo around puppies to preserve body pixels. They may need edge refinement later, but they are integrated now so the tracker does not reference deleted legacy assets.
 - Hourly dog movement can be written by whichever open device notices the timer first; last write wins. This is acceptable for now, but a Firestore transaction/lease could make it stricter later.
-- `loadFromFirebase()` (one-shot fetch at page load) is not routed through the `run_serialized()` queue added 2026-07-08, so it could theoretically still race a user action taken in the very first instant after page load. See "Wish Balance Sync Bug Fix" above.
+- `loadFromFirebase()` and the realtime `onSnapshot` listener still do unguarded absolute-value merges of balance fields into local state on *read*. This is fine now that *writes* are delta-based (increment()) — a stale read can't corrupt the server-side truth anymore, it can at most show a briefly-outdated number locally until the next sync tick. Low priority; see "Wish Balance Sync Bug Fix, Round 2" above.
+- `sHabitStatus`/`kkHabitStatus` (which days are checked, per habit) are still synced as full absolute-object overwrites, not deltas, unlike the balance fields. This wasn't part of either reported bug (habit checkboxes reportedly display correctly; only the wish *count* was wrong), and per real Firestore's read-your-own-writes guarantee a single device's own rapid clicking should be safe. It was deliberately left out of scope for the Round 2 fix. If checkbox state itself is ever reported as reverting or duplicating, start here.
 
 ---
 
 ## Files Changed This Session
 
-- `script.js` (v19): added `run_serialized()` promise queue; routed `toggle_habit_day`, `perform_balance_action`, `pick_flower`, `clear_vase`, `shuffle_vase` through it to fix the wish-balance race condition described above.
+- `script.js` (v20): switched all balance-mutating writes (`toggle_habit_day`, `perform_balance_action`, `perform_mystery_seed_draw`) to push Firestore `increment()` deltas instead of absolute values; `saveBalancesToFirebase()` now omits balance fields entirely when nothing changed. See "Wish Balance Sync Bug Fix, Round 2" above.
+- `index.html`: version bump to `script.js?v=20`.
+
+### Previous Session (Wish Balance Fix, Round 1)
+
+- `script.js` (v19): added `run_serialized()` promise queue; routed `toggle_habit_day`, `perform_balance_action`, `pick_flower`, `clear_vase`, `shuffle_vase` through it.
 - `index.html`: version bump to `script.js?v=19`.
 
 ### Previous Session (Dog Sync)
@@ -243,7 +267,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Pending Work / Open Questions
 
-- Confirm with S and KK that the confetti/balance-not-increasing issue and the pool-zeroing issue don't recur, especially when checking off multiple habits quickly in a row.
+- Confirm with S and KK that the confetti/balance-not-increasing issue and the pool-zeroing issue don't recur. This is the second fix for the same symptom; if it recurs a third time, stop and question whether the localStorage-primary + full-document Firestore sync architecture itself (not just individual field sync logic) needs to change, rather than attempting a third narrow fix.
 - Visual check shared puppy display on S / Kang / Pool cards across mobile and desktop.
 - Consider: refine transparent edges on the new basic pose assets, reducing cream halo without removing white puppy body.
 - Visual check hourly movement and Puppy Event companion transfer behavior across two devices.
@@ -254,8 +278,8 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Both users should reload the app and try checking off several habits quickly in a row to confirm the balance race condition is resolved.
-- If balance issues ever recur specifically right after opening the app (not mid-session), investigate the `loadFromFirebase()` residual risk noted in Known Issues.
+- Both users should reload the app (hard refresh if needed) and use it normally for a few days; watch specifically for the confetti-without-increase and balance-reset patterns.
+- If it recurs, capture what both S's and KK's devices were doing right before/after (which actions, roughly how close in time) — that detail was not available for round 1 or round 2 and would help pin down whether it's the `sHabitStatus` full-overwrite gap noted in Known Issues or something else entirely.
 - Test two devices/browsers against the production deployment and confirm `dogState` keeps puppy placement/pose synchronized.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
