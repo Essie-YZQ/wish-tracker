@@ -10,6 +10,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Priority
 
 - The Withdraw button appeared broken (displayed pool balance showed wishes available but clicking did nothing) due to a stale local recompute of `pool_balance` fighting the independently-synced Firestore value — fixed 2026-08-22, see "Withdraw Button Broken / Pool Balance Display Bug Fix" below.
+- Underlying that: the Mystery Seed draw's 2-wish cost was never being credited back to the pool, which genuinely drained the real pool to 0 over time (breaking the intended constant-30-total design) — fixed 2026-08-22, see "Mystery Seed Draw Not Returning Cost to Pool Fix" below. The live Firestore pool balance still needs a one-time manual correction to restore the ~22 wishes lost to this bug before the fix (owner to confirm before that data write happens).
 - The wish-balance race condition recurred after the 2026-07-08 fix and has been fixed again, more thoroughly, on 2026-07-11 — see "Wish Balance Sync Bug Fix (Round 2)" below. The 2026-07-08 fix was necessary but not sufficient.
 - The weekly-sources emoji row (which habits earned wishes this week) had the same class of bug and was fixed the same day — see "Weekly Sources Display Bug Fix (2026-07-11)" below.
 - S's `drink_water` and `sleep_early` weekly targets lowered from 7 to 5 (2026-07-11, owner request).
@@ -23,8 +24,8 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=23`
-- Latest code commit: see "Withdraw Button Broken / Pool Balance Display Bug Fix" below for the commit hash once pushed.
+- Asset versions: `style.css?v=23`, `script.js?v=24`
+- Latest code commit: see "Mystery Seed Draw Not Returning Cost to Pool Fix" below for the commit hash once pushed.
 - Production branch: `origin/main` includes the wish-balance race fix (both rounds), the weekly-sources fix, the target_per_week change, and the Firebase dog sync fix.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
@@ -215,6 +216,16 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 **Verified via:** a standalone Node reproduction of the old vs. new `normalize_balances` logic (10 habit-reward claims, 3 mystery-seed draws, 10 more reward claims draining the real pool to 0) — the old logic showed a displayed pool balance of 6 while the true synced value was 0 (reproducing the exact "looks available, click does nothing" symptom); the new logic always matches the true value exactly. No Firebase needed since this bug is pure local arithmetic, not a sync race.
 
 - `script.js` bumped to `?v=23`.
+
+### Mystery Seed Draw Not Returning Cost to Pool Fix (2026-08-22)
+
+**Why the previous fix wasn't the whole story:** the display/real-value mismatch above was real and is fixed, but the owner clarified the actual intended design: `sBalance + kkBalance + poolBalance` must always equal a constant 30 — the Mystery Seed draw's 2-wish cost is meant to move from the drawing user's own balance back into the shared pool, not disappear from the economy. Checking the live Firestore data confirmed the pool had genuinely reached 0 with `sBalance=6, kkBalance=2, poolBalance=0` (total 8, not 30) — 22 wishes missing, consistent with roughly 11 past seed draws never having credited the pool.
+
+**Root cause:** `perform_mystery_seed_draw()` deducted the 2-wish cost from the user's balance but never added it back to `state.pool_balance`, and its `balance_deltas` object only included the user's `-2`, never `pool: +2`. Every draw permanently shrank the 30-wish economy instead of just moving 2 wishes from a personal vase to the pool. Over enough draws this is what drained the real pool to 0 and made Withdraw correctly (but unhelpfully) refuse every time.
+
+**Fix:** `perform_mystery_seed_draw()` now also does `state.pool_balance += 2` and includes `pool: 2` in `balance_deltas`, so the cost is credited back to the pool via the same atomic `increment()` path as every other balance-mutating action, restoring the 30-wish conservation invariant end-to-end.
+
+- `script.js` bumped to `?v=24`.
 
 ---
 

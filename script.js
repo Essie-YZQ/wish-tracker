@@ -2329,10 +2329,13 @@ async function perform_mystery_seed_draw(user_id) {
   const locked = FLOWER_LIST.filter(id => !user.unlocked_flowers.includes(id));
   if (locked.length === 0) return;
 
-  // Deduct the 2-wish cost regardless of outcome.
+  // Deduct the 2-wish cost regardless of outcome. The 2 wishes go back into the
+  // shared pool, not out of the 30-wish economy entirely -- sBalance + kkBalance +
+  // poolBalance must always add up to a constant 30.
   user.wish_balance -= 2;
+  state.pool_balance += 2;
   state.last_action = null;
-  const balance_deltas = { [user_id]: -2 };
+  const balance_deltas = { [user_id]: -2, pool: 2 };
 
   const success = Math.random() < 0.20;
 
