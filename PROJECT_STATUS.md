@@ -10,7 +10,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Priority
 
 - The Withdraw button appeared broken (displayed pool balance showed wishes available but clicking did nothing) due to a stale local recompute of `pool_balance` fighting the independently-synced Firestore value — fixed 2026-08-22, see "Withdraw Button Broken / Pool Balance Display Bug Fix" below.
-- Underlying that: the Mystery Seed draw's 2-wish cost was never being credited back to the pool, which genuinely drained the real pool to 0 over time (breaking the intended constant-30-total design) — fixed 2026-08-22, see "Mystery Seed Draw Not Returning Cost to Pool Fix" below. The live Firestore pool balance still needs a one-time manual correction to restore the ~22 wishes lost to this bug before the fix (owner to confirm before that data write happens).
+- Underlying that: the Mystery Seed draw's 2-wish cost was never being credited back to the pool, which genuinely drained the real pool to 0 over time (breaking the intended constant-30-total design). Code fixed 2026-08-22 (see "Mystery Seed Draw Not Returning Cost to Pool Fix" below) and the live Firestore `poolBalance` has been manually corrected from 0 to 22 to restore the constant-30 total — see "Production data correction" note at the end of that section. Both fixes pushed to `origin/main`; fully resolved.
 - The wish-balance race condition recurred after the 2026-07-08 fix and has been fixed again, more thoroughly, on 2026-07-11 — see "Wish Balance Sync Bug Fix (Round 2)" below. The 2026-07-08 fix was necessary but not sufficient.
 - The weekly-sources emoji row (which habits earned wishes this week) had the same class of bug and was fixed the same day — see "Weekly Sources Display Bug Fix (2026-07-11)" below.
 - S's `drink_water` and `sleep_early` weekly targets lowered from 7 to 5 (2026-07-11, owner request).
@@ -37,7 +37,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ### Wish & Balance System
 - Each user earns wishes by completing habits. Wishes are stored in personal balance.
-- Pool balance = 30 − sBalance − kkBalance (derived, not independent).
+- `sBalance + kkBalance + poolBalance` is a closed economy that must always equal a constant 30. `poolBalance` is its own independently Firestore-synced field (via `increment()` deltas, not derived/recomputed locally — see "Withdraw Button Broken / Pool Balance Display Bug Fix" and "Mystery Seed Draw Not Returning Cost to Pool Fix", both 2026-08-22, for two bugs that broke this invariant and how they were fixed). Every balance-mutating action must move wishes between exactly two of these three buckets — never create or destroy them.
 - **Donate**: send 1 personal wish back to Pool (undoable).
 - **Withdraw**: take 1 wish from Pool to personal balance (undoable).
 - **Give to KK / Give to S**: transfer 1 wish to the other user (undoable).
@@ -226,6 +226,9 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 **Fix:** `perform_mystery_seed_draw()` now also does `state.pool_balance += 2` and includes `pool: 2` in `balance_deltas`, so the cost is credited back to the pool via the same atomic `increment()` path as every other balance-mutating action, restoring the 30-wish conservation invariant end-to-end.
 
 - `script.js` bumped to `?v=24`.
+- Code commit: `28b69c0 Credit Mystery Seed draw's 2-wish cost back to the pool`, pushed to `origin/main` 2026-08-22.
+
+**Production data correction (2026-08-22):** the bug above had already drained the live `poolBalance` in Firestore (`shared_state/main`) to 0 before the code fix landed, with `sBalance=6, kkBalance=2` (total 8, not the constant 30). Corrected by directly patching `poolBalance` to `22` via the Firestore REST API (owner confirmed before this write), restoring `6 + 2 + 22 = 30`. Cross-checked against the `history` snapshot for the prior week (`2026-08-17`: sBalance 7, kkBalance 2, poolBalance 21 — already summing to 30), which independently confirms 22 is the correct restored pool value and that the leak happened entirely within the current week (~11 seed draws' worth). No other fields were touched.
 
 ---
 
