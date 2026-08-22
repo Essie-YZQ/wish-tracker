@@ -9,6 +9,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
+- The Withdraw button appeared broken (displayed pool balance showed wishes available but clicking did nothing) due to a stale local recompute of `pool_balance` fighting the independently-synced Firestore value — fixed 2026-08-22, see "Withdraw Button Broken / Pool Balance Display Bug Fix" below.
 - The wish-balance race condition recurred after the 2026-07-08 fix and has been fixed again, more thoroughly, on 2026-07-11 — see "Wish Balance Sync Bug Fix (Round 2)" below. The 2026-07-08 fix was necessary but not sufficient.
 - The weekly-sources emoji row (which habits earned wishes this week) had the same class of bug and was fixed the same day — see "Weekly Sources Display Bug Fix (2026-07-11)" below.
 - S's `drink_water` and `sleep_early` weekly targets lowered from 7 to 5 (2026-07-11, owner request).
@@ -22,8 +23,8 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=22`
-- Latest code commit: see "Weekly Sources Display Bug Fix" below for the commit hash once pushed.
+- Asset versions: `style.css?v=23`, `script.js?v=23`
+- Latest code commit: see "Withdraw Button Broken / Pool Balance Display Bug Fix" below for the commit hash once pushed.
 - Production branch: `origin/main` includes the wish-balance race fix (both rounds), the weekly-sources fix, the target_per_week change, and the Firebase dog sync fix.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
@@ -203,6 +204,18 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 
 - `script.js` bumped to `?v=22`.
 
+### Withdraw Button Broken / Pool Balance Display Bug Fix (2026-08-22)
+
+**Reported symptom:** the Withdraw button stopped working — clicking it did nothing, even though the displayed Pool balance showed wishes available.
+
+**Root cause:** `normalize_balances()` (called on every single `get_state()`/`save_state()`, i.e. on every render) still recomputed `state.pool_balance` from the old formula `total_wishes(30) - sBalance - kkBalance`, left over from before the Wish Balance Sync Bug Fix (Round 2, 2026-07-11) made `poolBalance` an independently-synced Firestore field via `increment()` deltas. That formula assumes the 30 wishes are always conserved between the pool and the two users — true until the Mystery Seed draw feature was added, which permanently spends 2 wishes from a user's balance with no return to the pool. Every seed draw made the recomputed (displayed) pool balance drift further above the true, correctly-synced value. Eventually the real pool could reach 0 (normal, expected depletion from habit rewards) while the display still showed a positive number — so clicking Withdraw correctly refused (checked against the real synced value) and silently showed "No wishes available," looking exactly like the button was broken. Other buttons (Donate, Give, Undo, Mystery Seed) were unaffected because their guard checks are against user balances, which this recompute never touched.
+
+**Fix:** `normalize_balances()` now only sanitizes `pool_balance` (`Math.max(0, Number(state.pool_balance) || 0)`), the same way `wish_balance` is sanitized, instead of re-deriving it. `pool_balance` is treated as its own independent field end-to-end now, matching how it's already synced to Firestore.
+
+**Verified via:** a standalone Node reproduction of the old vs. new `normalize_balances` logic (10 habit-reward claims, 3 mystery-seed draws, 10 more reward claims draining the real pool to 0) — the old logic showed a displayed pool balance of 6 while the true synced value was 0 (reproducing the exact "looks available, click does nothing" symptom); the new logic always matches the true value exactly. No Firebase needed since this bug is pure local arithmetic, not a sync race.
+
+- `script.js` bumped to `?v=23`.
+
 ---
 
 ## All Product & Design Decisions
@@ -327,4 +340,4 @@ Repository files do not store test unlock state. Flower unlock progress persists
 ## Last Updated
 
 - Last updated by: Claude
-- Last updated date: 2026-07-11
+- Last updated date: 2026-08-22

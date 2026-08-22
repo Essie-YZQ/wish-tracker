@@ -1030,8 +1030,15 @@ function normalize_balances(state) {
     sync_vase_flowers_to_balance(user);
   });
 
-  const total_user_balance = state.users.reduce((sum, user) => sum + user.wish_balance, 0);
-  state.pool_balance = Math.max(0, total_wishes - total_user_balance);
+  // pool_balance is its own independently-synced field (like wish_balance), never
+  // re-derived from "30 - user balances". That invariant only held back when every
+  // wish was conserved between pool and users. It broke once the Mystery Seed draw
+  // started permanently spending wishes out of a user's balance (2 wishes, no
+  // return to pool) -- after that, re-deriving pool_balance here silently overwrote
+  // the correct, delta-synced Firestore value with an inflated guess on every single
+  // render, which is what made Withdraw look available (and then silently fail with
+  // "No wishes available") even when the pool was really empty. Sanitize only.
+  state.pool_balance = Math.max(0, Number(state.pool_balance) || 0);
 }
 
 function rollover_to_current_week(state, current_week_start) {
