@@ -1,5 +1,5 @@
 import { db } from './firebase.js?v=2';
-import { doc, getDoc, updateDoc, onSnapshot, increment } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, getDoc, updateDoc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // Serializes read -> mutate -> save -> push-to-Firebase actions so overlapping calls
 // (e.g. checking off several habits in quick succession) can't interleave and clobber
@@ -177,51 +177,7 @@ function subscribeToFirebaseBalances() {
 
 
 
-async function getLatestStateFromFirebase() {
-  const state = get_state(); 
-  const docRef = doc(db, "shared_state", "main");
-  const docSnap = await getDoc(docRef);
-
-  if (docSnap.exists()) {
-    const data = docSnap.data();
-
-    if (typeof data.sBalance === "number") {
-      state.users[0].wish_balance = data.sBalance;
-    }
-
-    if (typeof data.kkBalance === "number") {
-      state.users[1].wish_balance = data.kkBalance;
-    }
-
-    if (typeof data.poolBalance === "number") {
-      state.pool_balance = data.poolBalance;
-    }
-
-    if (Array.isArray(data.sVaseFlowers)) {
-      state.users[0].vase_flowers = data.sVaseFlowers;
-    }
-
-    if (Array.isArray(data.kkVaseFlowers)) {
-      state.users[1].vase_flowers = data.kkVaseFlowers;
-    }
-
-    if (Array.isArray(data.sUnlockedFlowers) && data.sUnlockedFlowers.length > 0) {
-      state.users[0].unlocked_flowers = data.sUnlockedFlowers;
-    }
-
-    if (Array.isArray(data.kkUnlockedFlowers) && data.kkUnlockedFlowers.length > 0) {
-      state.users[1].unlocked_flowers = data.kkUnlockedFlowers;
-    }
-
-    state.users.forEach(sync_vase_flowers_to_balance);
-  }
-
-  return state;
-}
-
-async function saveBalancesToFirebase(state, habit_user_id = null, balance_deltas = null, changed_source_user_ids = []) {
-  const docRef = doc(db, "shared_state", "main");
-
+function buildFirebaseUpdate(state, habit_user_id = null, changed_source_user_ids = []) {
   const update = {
     weekStart: state.week_start_date,
     sVaseFlowers: state.users[0].vase_flowers || [],
@@ -244,23 +200,6 @@ async function saveBalancesToFirebase(state, habit_user_id = null, balance_delta
     update.kkWeeklySources = compute_weekly_sources(state.users[1]);
   }
 
-  // Balance fields are pushed as atomic deltas (Firestore increment()), never as an
-  // absolute value read from local state. Local state can be stale (this device missed
-  // a realtime update, or another action is mid-flight); an absolute overwrite would
-  // silently clobber whatever the true server value is. A delta is safe to apply no
-  // matter what order concurrent writes land in.
-  if (balance_deltas) {
-    if (balance_deltas.s) {
-      update.sBalance = increment(balance_deltas.s);
-    }
-    if (balance_deltas.kk) {
-      update.kkBalance = increment(balance_deltas.kk);
-    }
-    if (balance_deltas.pool) {
-      update.poolBalance = increment(balance_deltas.pool);
-    }
-  }
-
   if (habit_user_id) {
     const user = state.users.find(u => u.user_id === habit_user_id);
     if (user) {
@@ -276,8 +215,88 @@ async function saveBalancesToFirebase(state, habit_user_id = null, balance_delta
     }
   }
 
-  await updateDoc(docRef, update);
-  console.log("Saved balances + sources to Firebase");
+  return update;
+}
+
+// Vase-only edits must never write balance fields.
+async function saveBalancesToFirebase(state) {
+  await updateDoc(doc(db, "shared_state", "main"), buildFirebaseUpdate(state));
+}
+
+function read_balances(state) {
+  return [state.users[0].wish_balance, state.users[1].wish_balance, state.pool_balance];
+}
+
+function assert_wish_balances(balances) {
+  if (balances.some(value => !Number.isSafeInteger(value) || value < 0) ||
+      balances.reduce((sum, value) => sum + value, 0) !== total_wishes) {
+    throw new Error("Wish balances are out of sync. Please refresh before trying again.");
+  }
+}
+
+function merge_transaction_state(local_state, data) {
+  const state = JSON.parse(JSON.stringify(local_state));
+  state.users[0].wish_balance = data.sBalance;
+  state.users[1].wish_balance = data.kkBalance;
+  state.pool_balance = data.poolBalance;
+  // Validate the raw server numbers before normalization can hide a negative balance.
+  assert_wish_balances(read_balances(state));
+  state.ui_message = "";
+  state.message_user_id = null;
+  state.users.forEach(user => {
+    const prefix = user.user_id === "s" ? "s" : "kk";
+    user.vase_flowers = data[`${prefix}VaseFlowers`] || [];
+    user.unlocked_flowers = data[`${prefix}UnlockedFlowers`] || ['snowdrop'];
+    user.habits = user.habits.map(habit => create_habit_state(habit, state.week_start_date));
+    const sources = data.weekStart === state.week_start_date ? data[`${prefix}WeeklySources`] || [] : [];
+    user.weekly_source_icons = sources;
+    user.weekly_transfer_icons = sources.filter(icon => icon === "👸" || icon === "🐷");
+    if (data.weekStart === state.week_start_date) {
+      applyHabitStatus(user.habits, data[`${prefix}HabitStatus`]);
+    }
+    sync_vase_flowers_to_balance(user);
+  });
+  return state;
+}
+
+async function commit_wish_action(user_id, mutate, habit_user_id = null) {
+  // Capture local-only UI/undo state once. A retry always rebuilds financial and
+  // habit state from the transaction snapshot, without publishing intermediate state.
+  const local_state = get_state();
+  const docRef = doc(db, "shared_state", "main");
+  try {
+    const committed = await runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(docRef);
+      if (!snapshot.exists()) throw new Error("Shared journal is unavailable. Please try again.");
+      const state = merge_transaction_state(local_state, snapshot.data());
+      const before = read_balances(state);
+      const sources_before = state.users.map(compute_weekly_sources);
+      const result = mutate(state);
+      const after = read_balances(state);
+      assert_wish_balances(after);
+      const changed_sources = state.users.filter((user, i) =>
+        JSON.stringify(compute_weekly_sources(user)) !== JSON.stringify(sources_before[i])
+      ).map(user => user.user_id);
+      const update = buildFirebaseUpdate(state, habit_user_id, changed_sources);
+      ['sBalance', 'kkBalance', 'poolBalance'].forEach((field, i) => {
+        if (after[i] !== before[i]) update[field] = after[i];
+      });
+      transaction.update(docRef, update);
+      state.users.forEach(user => { user.weekly_source_icons = compute_weekly_sources(user); });
+      return { state, result };
+    });
+    save_state(committed.state);
+    render_app();
+    return committed;
+  } catch (error) {
+    console.error("Wish action failed:", error);
+    const state = get_state();
+    state.ui_message = "Couldn't save this change. Please refresh and try again.";
+    state.message_user_id = user_id;
+    save_state(state);
+    render_app();
+    return null;
+  }
 }
 
 async function saveWeeklySnapshot(state) {
@@ -1030,14 +1049,8 @@ function normalize_balances(state) {
     sync_vase_flowers_to_balance(user);
   });
 
-  // pool_balance is its own independently-synced field (like wish_balance), never
-  // re-derived from "30 - user balances". That invariant only held back when every
-  // wish was conserved between pool and users. It broke once the Mystery Seed draw
-  // started permanently spending wishes out of a user's balance (2 wishes, no
-  // return to pool) -- after that, re-deriving pool_balance here silently overwrote
-  // the correct, delta-synced Firestore value with an inflated guess on every single
-  // render, which is what made Withdraw look available (and then silently fail with
-  // "No wishes available") even when the pool was really empty. Sanitize only.
+  // Keep the shared pool value from Firestore. Conservation is validated against
+  // the server snapshot inside commit_wish_action, never repaired during rendering.
   state.pool_balance = Math.max(0, Number(state.pool_balance) || 0);
 }
 
@@ -2004,39 +2017,27 @@ async function toggle_habit_day(user_id, habit_id, date_value) {
 }
 
 async function run_toggle_habit_day(user_id, habit_id, date_value) {
-  console.log("toggle_habit_day called", user_id, habit_id, date_value);
-  const state = get_state();
-  const user = state.users.find((item) => item.user_id === user_id);
+  const committed = await commit_wish_action(user_id, state => {
+    const user = state.users.find(item => item.user_id === user_id);
+    const habit = user?.habits.find(item => item.habit_id === habit_id);
+    if (!habit || !Object.prototype.hasOwnProperty.call(habit.daily_status, date_value)) return false;
 
-  if (!user) {
-    return;
-  }
-
-  const habit = user.habits.find((item) => item.habit_id === habit_id);
-
-  if (!habit || !Object.prototype.hasOwnProperty.call(habit.daily_status, date_value)) {
-    return;
-  }
-
-  habit.daily_status[date_value] = !habit.daily_status[date_value];
-  habit.done_count = count_done_days(habit.daily_status);
-  const was_claimed = habit.is_reward_claimed;
-  const wish_balance_before = user.wish_balance;
-  const pool_balance_before = state.pool_balance;
-  sync_reward_status(state, user, habit, state.week_start_date);
-  const just_earned = !was_claimed && habit.is_reward_claimed;
-  const balance_deltas = {
-    [user_id]: user.wish_balance - wish_balance_before,
-    pool: state.pool_balance - pool_balance_before
-  };
-  console.log("before save", habit.daily_status, habit.done_count);
-  save_state(state);
-  render_app();
-  if (just_earned) {
+    const previous_status = habit.daily_status[date_value];
+    const was_claimed = habit.is_reward_claimed;
+    habit.daily_status[date_value] = !previous_status;
+    habit.done_count = count_done_days(habit.daily_status);
+    if (sync_reward_status(state, user, habit, state.week_start_date) === false) {
+      habit.daily_status[date_value] = previous_status;
+      habit.done_count = count_done_days(habit.daily_status);
+      return false;
+    }
+    return !was_claimed && habit.is_reward_claimed;
+  }, user_id);
+  if (!committed) return;
+  if (committed.result) {
     confetti({ particleCount: 80, spread: 75, origin: { y: 0.65 }, colors: ["#cf7b58", "#e8a87c", "#f5d5c0", "#b85c38"] });
   }
-  await saveBalancesToFirebase(state, user_id, balance_deltas, [user_id]);
-  await saveWeeklySnapshot(state);
+  await saveWeeklySnapshot(committed.state);
 }
 
 function sync_reward_status(state, user, habit, current_week_start) {
@@ -2059,9 +2060,16 @@ function sync_reward_status(state, user, habit, current_week_start) {
     habit.done_count < habit.target_per_week &&
     habit.is_reward_claimed === true
   ) {
+    // A spent/transferred reward cannot be refunded without taking a wish back.
+    // Keep the claim and checkbox intact until the user has enough to return.
+    if (user.wish_balance < habit.reward_value) {
+      state.ui_message = "You need 1 wish to undo this reward. Withdraw or receive a wish first.";
+      state.message_user_id = user.user_id;
+      return false;
+    }
     habit.is_reward_claimed = false;
     habit.earned_at = null;
-    user.wish_balance = Math.max(0, user.wish_balance - habit.reward_value);
+    user.wish_balance -= habit.reward_value;
     sync_vase_flowers_to_balance(user);
     user.total_earned = Math.max(0, user.total_earned - habit.reward_value);
     state.pool_balance += habit.reward_value;
@@ -2073,58 +2081,30 @@ async function perform_balance_action(action_type, action_button) {
 }
 
 async function run_perform_balance_action(action_type, action_button) {
-  const state = await getLatestStateFromFirebase();
   const current_user_id = action_button?.dataset.userId;
   const other_user_id = action_button?.dataset.otherUserId;
-  const current_user = state.users.find((user) => user.user_id === current_user_id);
-  const other_user = state.users.find((user) => user.user_id === other_user_id);
-
-  state.ui_message = "";
-  state.message_user_id = null;
-  console.log("perform_balance_action", action_type, current_user_id, other_user_id);
-
-  const balances_before = {
-    s: state.users[0].wish_balance,
-    kk: state.users[1].wish_balance,
-    pool: state.pool_balance
-  };
-  const sources_before = {
-    s: compute_weekly_sources(state.users[0]).join(","),
-    kk: compute_weekly_sources(state.users[1]).join(",")
-  };
-
-  switch (action_type) {
-    case "give_to_other":
-      give_to_other(current_user, other_user, state);
-      break;
-    case "return_to_pool":
-      return_to_pool(current_user, state);
-      break;
-    case "withdraw_from_pool":
-      withdraw_from_pool(current_user, state);
-      break;
-    case "undo_last_action":
-      undo_last_action(state);
-      break;
-    case "mystery_seed_draw":
-      show_mystery_seed_dialog(current_user_id);
-      return;
-    default:
-      return;
+  if (action_type === "mystery_seed_draw") {
+    show_mystery_seed_dialog(current_user_id);
+    return;
   }
-
-const balance_deltas = {
-  s: state.users[0].wish_balance - balances_before.s,
-  kk: state.users[1].wish_balance - balances_before.kk,
-  pool: state.pool_balance - balances_before.pool
-};
-const changed_source_user_ids = ['s', 'kk'].filter(
-  (id) => compute_weekly_sources(state.users[id === 's' ? 0 : 1]).join(",") !== sources_before[id]
-);
-
-save_state(state);
-await saveBalancesToFirebase(state, null, balance_deltas, changed_source_user_ids);
-render_app();
+  await commit_wish_action(current_user_id, state => {
+    const current_user = state.users.find(user => user.user_id === current_user_id);
+    const other_user = state.users.find(user => user.user_id === other_user_id);
+    switch (action_type) {
+      case "give_to_other":
+        give_to_other(current_user, other_user, state);
+        break;
+      case "return_to_pool":
+        return_to_pool(current_user, state);
+        break;
+      case "withdraw_from_pool":
+        withdraw_from_pool(current_user, state);
+        break;
+      case "undo_last_action":
+        undo_last_action(state);
+        break;
+    }
+  });
 }
 
 function give_to_other(from_user, to_user, state) {
@@ -2322,34 +2302,32 @@ function show_mystery_seed_dialog(user_id) {
 }
 
 async function perform_mystery_seed_draw(user_id) {
-  const state = await getLatestStateFromFirebase();
-  const user = state.users.find(u => u.user_id === user_id);
-  if (!user || user.wish_balance < 2) return;
+  return run_serialized(() => run_mystery_seed_draw(user_id));
+}
 
-  const locked = FLOWER_LIST.filter(id => !user.unlocked_flowers.includes(id));
-  if (locked.length === 0) return;
-
-  // Deduct the 2-wish cost regardless of outcome. The 2 wishes go back into the
-  // shared pool, not out of the 30-wish economy entirely -- sBalance + kkBalance +
-  // poolBalance must always add up to a constant 30.
-  user.wish_balance -= 2;
-  state.pool_balance += 2;
-  state.last_action = null;
-  const balance_deltas = { [user_id]: -2, pool: 2 };
-
+async function run_mystery_seed_draw(user_id) {
+  // Choose random values once so a transaction retry cannot reroll the outcome.
   const success = Math.random() < 0.20;
+  const flower_roll = Math.random();
+  const committed = await commit_wish_action(user_id, state => {
+    const user = state.users.find(item => item.user_id === user_id);
+    if (!user || user.wish_balance < 2) return null;
+    const locked = FLOWER_LIST.filter(id => !user.unlocked_flowers.includes(id));
+    if (locked.length === 0) return null;
 
-  if (success) {
-    const new_flower = locked[Math.floor(Math.random() * locked.length)];
-    user.unlocked_flowers = [...user.unlocked_flowers, new_flower];
-    save_state(state);
-    await saveBalancesToFirebase(state, null, balance_deltas);
-    render_app();
-    show_seed_reveal(new_flower, user.name);
+    user.wish_balance -= 2;
+    state.pool_balance += 2;
+    sync_vase_flowers_to_balance(user);
+    state.last_action = null;
+    const new_flower = success ? locked[Math.floor(flower_roll * locked.length)] : null;
+    if (new_flower) user.unlocked_flowers = [...user.unlocked_flowers, new_flower];
+    return { new_flower, user_name: user.name };
+  });
+  if (!committed?.result) return;
+  if (committed.result.new_flower) {
+    show_seed_reveal(committed.result.new_flower, committed.result.user_name);
   } else {
     const puppy_event = create_puppy_event();
-    save_state(state);
-    await saveBalancesToFirebase(state, null, balance_deltas);
     await set_dog_companion_mode(user_id, puppy_event);
     render_app();
     show_seed_fail_reveal(user_id, puppy_event);

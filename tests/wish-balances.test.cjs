@@ -1,0 +1,196 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+
+const clone = value => JSON.parse(JSON.stringify(value));
+const source = fs.readFileSync(path.join(__dirname, '../script.js'), 'utf8')
+  .replace(/^import .*;\n/gm, '')
+  .replace(/\nloadFromFirebase\(\)[\s\S]*$/, '');
+
+// Two clients share a versioned backend. A conflicting transaction reruns its
+// callback against a new snapshot, matching Firestore's optimistic concurrency.
+function backend(balances = [0, 0, 30]) {
+  return {
+    data: { sBalance: balances[0], kkBalance: balances[1], poolBalance: balances[2] },
+    version: 0, retries: 0, writes: [], fail: false,
+    async transaction(callback) {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (this.fail) throw new Error('offline');
+        const version = this.version;
+        const data = clone(this.data);
+        let update;
+        const result = await callback({
+          get: async () => ({ exists: () => true, data: () => clone(data) }),
+          update: (_ref, values) => { update = clone(values); }
+        });
+        if (version !== this.version) { this.retries++; continue; }
+        if (update) {
+          Object.assign(this.data, update);
+          this.writes.push(update);
+          this.version++;
+        }
+        return result;
+      }
+      throw new Error('Too much contention');
+    }
+  };
+}
+
+function client(server) {
+  const storage = new Map();
+  const context = vm.createContext({
+    console: { log() {}, error() {} },
+    document: { addEventListener() {} },
+    localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+    db: {}, doc: () => ({}),
+    runTransaction: (_db, callback) => server.transaction(callback),
+    getDoc: async () => ({ exists: () => true, data: () => clone(server.data) }),
+    updateDoc: async (_ref, update) => {
+      Object.assign(server.data, clone(update));
+      server.writes.push(clone(update));
+      server.version++;
+    },
+    confetti: () => { context.confetti_count++; }, confetti_count: 0
+  });
+  vm.runInContext(source, context);
+  vm.runInContext(`
+    render_app = () => {};
+    show_seed_reveal = () => {};
+    show_seed_fail_reveal = () => {};
+    set_dog_companion_mode = async () => {};
+    save_state(create_initial_state());
+  `, context);
+  const state = vm.runInContext('get_state()', context);
+  server.data.weekStart ||= state.week_start_date;
+  return {
+    context,
+    run: code => vm.runInContext(code, context),
+    action: (type, id = 's') => context.perform_balance_action(type, {
+      dataset: { userId: id, otherUserId: id === 's' ? 'kk' : 's' }
+    }),
+    toggle: (id, habit, date) => context.toggle_habit_day(id, habit, date),
+    seed: id => context.perform_mystery_seed_draw(id),
+    state: () => clone(vm.runInContext('get_state()', context))
+  };
+}
+
+function balances(server) {
+  const values = ['sBalance', 'kkBalance', 'poolBalance'].map(key => server.data[key]);
+  assert.equal(values.reduce((a, b) => a + b, 0), 30);
+  assert.ok(values.every(value => Number.isSafeInteger(value) && value >= 0));
+  return values;
+}
+
+test('spent habit reward cannot create a refund; retry after withdrawing works', async () => {
+  const server = backend();
+  const app = client(server);
+  const date = Object.keys(app.state().users[0].habits[8].daily_status)[0];
+  await app.toggle('s', 's_meet_friends', date);
+  assert.deepEqual(balances(server), [1, 0, 29]);
+  await app.action('return_to_pool');
+  await app.toggle('s', 's_meet_friends', date);
+  assert.deepEqual(balances(server), [0, 0, 30]);
+  assert.equal(server.data.sHabitStatus.s_meet_friends[date], true);
+  assert.equal(server.data.sHabitStatus.s_meet_friends.is_reward_claimed, true);
+  assert.match(app.state().ui_message, /need 1 wish/);
+  await app.action('withdraw_from_pool');
+  await app.toggle('s', 's_meet_friends', date);
+  assert.deepEqual(balances(server), [0, 0, 30]);
+  assert.equal(server.data.sHabitStatus.s_meet_friends.is_reward_claimed, false);
+});
+
+test('Donate, Withdraw, Give and each Undo conserve wishes', async () => {
+  const server = backend([5, 3, 22]);
+  const app = client(server);
+  for (const action of ['return_to_pool', 'withdraw_from_pool', 'give_to_other']) {
+    await app.action(action);
+    balances(server);
+    await app.action('undo_last_action');
+    assert.deepEqual(balances(server), [5, 3, 22]);
+  }
+});
+
+test('two devices competing for the last pool wish never overdraw', async () => {
+  const server = backend([29, 0, 1]);
+  const a = client(server), b = client(server);
+  await Promise.all([a.action('withdraw_from_pool'), b.action('withdraw_from_pool', 'kk')]);
+  assert.equal(balances(server)[2], 0);
+  assert.ok(server.retries > 0);
+});
+
+test('two devices spending the same last wish cannot create negative personal balances', async () => {
+  const server = backend([1, 0, 29]);
+  const a = client(server), b = client(server);
+  await Promise.all([a.action('give_to_other'), b.action('return_to_pool')]);
+  assert.equal(balances(server)[0], 0);
+  assert.ok(server.retries > 0);
+});
+
+test('concurrent habit completion uses server claim state and awards only once', async () => {
+  const server = backend();
+  const a = client(server), b = client(server);
+  const dates = Object.keys(a.state().users[0].habits[2].daily_status);
+  server.data.sHabitStatus = { s_workout: { [dates[0]]: true, is_reward_claimed: false } };
+  await Promise.all([
+    a.toggle('s', 's_workout', dates[1]), b.toggle('s', 's_workout', dates[2])
+  ]);
+  assert.deepEqual(balances(server), [1, 0, 29]);
+  assert.equal(server.data.sHabitStatus.s_workout.done_count, 3);
+  assert.equal(a.context.confetti_count + b.context.confetti_count, 1);
+});
+
+test('both seed outcomes return the cost to Pool', async () => {
+  for (const roll of [0, 0.9]) {
+    const server = backend([2, 0, 28]);
+    const app = client(server);
+    app.run(`Math.random = () => ${roll}`);
+    await app.seed('s');
+    assert.deepEqual(balances(server), [0, 0, 30]);
+    assert.equal(server.data.sUnlockedFlowers.length, roll === 0 ? 2 : 1);
+  }
+});
+
+test('concurrent seed draws with only two wishes charge exactly once', async () => {
+  const server = backend([2, 0, 28]);
+  const a = client(server), b = client(server);
+  a.run('Math.random = () => 0'); b.run('Math.random = () => 0');
+  await Promise.all([a.seed('s'), b.seed('s')]);
+  assert.deepEqual(balances(server), [0, 0, 30]);
+  assert.equal(server.data.sUnlockedFlowers.length, 2);
+});
+
+test('invalid reducer and malformed server balances are rejected before writing', async () => {
+  const server = backend();
+  const app = client(server);
+  await app.run(`commit_wish_action('s', state => { state.pool_balance++; })`);
+  assert.equal(server.writes.length, 0);
+  for (const values of [[22, 2, 8], [-1, 0, 31], [0.5, 0, 29.5]]) {
+    [server.data.sBalance, server.data.kkBalance, server.data.poolBalance] = values;
+    await app.action('withdraw_from_pool');
+    assert.equal(server.writes.length, 0);
+  }
+});
+
+test('offline failure leaves habit state and balances unchanged, with no confetti', async () => {
+  const server = backend();
+  const app = client(server);
+  const date = Object.keys(app.state().users[0].habits[8].daily_status)[0];
+  server.fail = true;
+  await app.toggle('s', 's_meet_friends', date);
+  assert.deepEqual(balances(server), [0, 0, 30]);
+  assert.equal(app.state().users[0].habits[8].daily_status[date], false);
+  assert.equal(app.context.confetti_count, 0);
+  assert.match(app.state().ui_message, /Couldn't save/);
+});
+
+test('vase-only save omits balance and habit fields', async () => {
+  const server = backend([5, 3, 22]);
+  const app = client(server);
+  await app.run('saveBalancesToFirebase(get_state())');
+  for (const field of ['sBalance', 'kkBalance', 'poolBalance', 'sHabitStatus', 'kkHabitStatus']) {
+    assert.equal(Object.hasOwn(server.writes[0], field), false);
+  }
+  assert.deepEqual(balances(server), [5, 3, 22]);
+});

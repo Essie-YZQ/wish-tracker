@@ -9,6 +9,10 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
+- The reported 32-wish total has been traced to a reproducible reward-reversal bug: cancelling a claimed habit after spending/transferring all personal wishes refunded Pool without debiting the user. The local fix blocks this reversal until the user has enough wishes, preserving both the check and claim.
+- All balance-mutating actions now use Firestore transactions with fresh server balances and habit claims, nonnegative-integer checks, and an exact-total-30 invariant. This replaces blind increment writes, which could overdraw during concurrent actions. Local balances and confetti are published only after a successful commit.
+- Ten persistent regression tests pass (`node --test tests/wish-balances.test.cjs`). Production correction and deployment status are recorded in the 2026-11-01 section below.
+
 - The Withdraw button appeared broken (displayed pool balance showed wishes available but clicking did nothing) due to a stale local recompute of `pool_balance` fighting the independently-synced Firestore value — fixed 2026-08-22, see "Withdraw Button Broken / Pool Balance Display Bug Fix" below.
 - Underlying that: the Mystery Seed draw's 2-wish cost was never being credited back to the pool, which genuinely drained the real pool to 0 over time (breaking the intended constant-30-total design). Code fixed 2026-08-22 (see "Mystery Seed Draw Not Returning Cost to Pool Fix" below) and the live Firestore `poolBalance` has been manually corrected from 0 to 22 to restore the constant-30 total — see "Production data correction" note at the end of that section. Both fixes pushed to `origin/main`; fully resolved.
 - The wish-balance race condition recurred after the 2026-07-08 fix and has been fixed again, more thoroughly, on 2026-07-11 — see "Wish Balance Sync Bug Fix (Round 2)" below. The 2026-07-08 fix was necessary but not sufficient.
@@ -24,8 +28,8 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=24`
-- Latest code commit: see "Mystery Seed Draw Not Returning Cost to Pool Fix" below for the commit hash once pushed.
+- Asset versions: `style.css?v=23`, `script.js?v=25`
+- Latest code: the 2026-11-01 conservation fix is prepared locally; see the deployment status below.
 - Production branch: `origin/main` includes the wish-balance race fix (both rounds), the weekly-sources fix, the target_per_week change, and the Firebase dog sync fix.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
@@ -37,7 +41,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ### Wish & Balance System
 - Each user earns wishes by completing habits. Wishes are stored in personal balance.
-- `sBalance + kkBalance + poolBalance` is a closed economy that must always equal a constant 30. `poolBalance` is its own independently Firestore-synced field (via `increment()` deltas, not derived/recomputed locally — see "Withdraw Button Broken / Pool Balance Display Bug Fix" and "Mystery Seed Draw Not Returning Cost to Pool Fix", both 2026-08-22, for two bugs that broke this invariant and how they were fixed). Every balance-mutating action must move wishes between exactly two of these three buckets — never create or destroy them.
+- `sBalance + kkBalance + poolBalance` is a closed economy that must always equal a constant 30. `poolBalance` is a stored Firestore field, not derived/recomputed during rendering. Balance changes are read, checked, and committed together in a Firestore transaction (2026-11-01); older fixes used `increment()` deltas. Every balance-mutating action must move wishes between exactly two of these three buckets — never create or destroy them.
 - **Donate**: send 1 personal wish back to Pool (undoable).
 - **Withdraw**: take 1 wish from Pool to personal balance (undoable).
 - **Give to KK / Give to S**: transfer 1 wish to the other user (undoable).
@@ -232,6 +236,27 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 
 ---
 
+### Wish Conservation / 32-Wish Bug Fix (2026-11-01)
+
+**Production evidence:** read-only inspection found `sBalance=22`, `kkBalance=2`, `poolBalance=8` (total 32). Weekly history last shows 30 on 2026-09-28, then 31 on 2026-10-05 and 32 on 2026-10-12 and subsequent snapshots. No per-action audit log exists, so the exact historical clicks cannot be established.
+
+**Reproduced defect:** `sync_reward_status()` used `Math.max(0, user.wish_balance - reward)` when reversing a habit reward but always added the full reward to Pool. With personal balance zero, this created one wish. Running the actual old function against a zero-balance claimed habit produces total 31; the fixed function leaves total 30 and the claim intact.
+
+**Changes:**
+- Refuse to uncheck a claimed habit below its target when the owner cannot return the reward; restore the checkbox and show a message to withdraw/receive a wish first.
+- Route habit toggles, Donate / Withdraw / Give / Undo, and Mystery Seed through `commit_wish_action()`. Each transaction rebuilds balances and habit claims from its server snapshot, recalculates on conflict, and validates nonnegative safe integers summing to exactly 30 before writing. This prevents concurrent overspending and duplicate habit claims from stale local state.
+- Transactional absolute writes are safe here because reads and writes share one transaction and conflicts retry; do not reintroduce standalone absolute balance writes.
+- Mystery Seed joins the local serialized queue; random choices are made once outside transaction retries, and the 2-wish cost still goes to Pool for either outcome.
+- Vase-only saves omit balance fields. Local financial state, reward confetti, and seed reveals wait for a successful transaction. Failed transactions show a retry message without an optimistic financial change.
+- Corrected the obsolete normalization comment: seed costs are returned to Pool; render-time normalization must never repair balances.
+- `index.html` now loads `script.js?v=25`.
+
+**Validation:** ten Node tests execute actual app functions in isolated VM clients against a versioned fake Firestore backend with conflict retries. Coverage: spent reward reversal and retry, transfers and all three undo types, contention for the last pool/personal wish, concurrent completion of one habit, both seed outcomes and competing seed draws, invalid totals/negative/fractional balances, offline failure, and vase-only writes. Syntax and diff checks pass. Browser click QA was attempted on a disposable local copy using fake Firebase, but the computer-control tool timed out; no production clicks were used as tests. The fake backend is not the Firebase emulator or a full SDK integration test.
+
+**Production correction:** completed 2026-11-01 at `18:53:01.897665Z`. Backed up the full document locally, then patched only `poolBalance` from 8 to 6 using the document update-time precondition. Verified every other field in the PATCH response matched the backup and reread confirmed `22 + 2 + 6 = 30`. Historical snapshots remain unchanged. Temporary backup: `/tmp/wish-tracker-live-repair-backup.json`.
+
+**Deployment:** pending. Publish the tested code to the existing `main` branch / GitHub Pages site, then verify the live asset version. Older already-open tabs keep running old JavaScript until reloaded.
+
 ## All Product & Design Decisions
 
 ### Mystery Seed / Dog Draw Design
@@ -284,12 +309,19 @@ Repository files do not store test unlock state. Flower unlock progress persists
 - **White dog visibility**: white body on light lavender card has low natural contrast. Mitigated with CSS `drop-shadow`. If card background changes, may need to revisit.
 - **New basic pose transparent assets**: current cutouts intentionally keep a visible soft cream safety halo around puppies to preserve body pixels. They may need edge refinement later, but they are integrated now so the tracker does not reference deleted legacy assets.
 - Hourly dog movement can be written by whichever open device notices the timer first; last write wins. This is acceptable for now, but a Firestore transaction/lease could make it stricter later.
-- `loadFromFirebase()` and the realtime `onSnapshot` listener still do unguarded absolute-value merges of balance fields into local state on *read*. This is fine now that *writes* are delta-based (increment()) — a stale read can't corrupt the server-side truth anymore, it can at most show a briefly-outdated number locally until the next sync tick. Low priority; see "Wish Balance Sync Bug Fix, Round 2" above.
-- `sHabitStatus`/`kkHabitStatus` (which days are checked, per habit) are still synced as full absolute-object overwrites, not deltas, unlike the balance fields. This wasn't part of either reported bug (habit checkboxes reportedly display correctly; only the wish *count* was wrong), and per real Firestore's read-your-own-writes guarantee a single device's own rapid clicking should be safe. It was deliberately left out of scope for the Round 2 fix. If checkbox state itself is ever reported as reverting or duplicating, start here.
+- `loadFromFirebase()` and realtime listeners may briefly display stale local data. Balance-changing writes now rebuild and validate state inside a server transaction, so stale display state cannot authorize a financial change. Read/render synchronization is separate follow-up work.
+- Habit actions now read and update the acting user's habit map within the same transaction as rewards, preventing stale concurrent habit writes. Weekly rollover and vase/dog-only writes still use the existing synchronization paths; this change does not redesign those features.
 
 ---
 
 ## Files Changed This Session
+
+- `script.js`: reward-reversal guard, shared transaction boundary, serialized seed draw, and commit-before-feedback behavior.
+- `index.html`: `script.js?v=25` cache version.
+- `tests/wish-balances.test.cjs`: ten persistent regression tests; no dependencies beyond Node.
+- `PROJECT_STATUS.md`: current findings, validation limits, production repair, and deployment status.
+
+### Previous Session (Weekly Sources)
 
 - `script.js` (v22): added `changed_source_user_ids` scoping to `saveBalancesToFirebase()` so `sWeeklySources`/`kkWeeklySources` are only pushed for a user whose sources actually changed; `resetWeeklySourcesInFirebase()` now also updates `weekStart`. See "Weekly Sources Display Bug Fix" above.
 - `script.js`: lowered S's `s_sleep_early` and `s_drink_water` `target_per_week` from 7 to 5.
@@ -319,7 +351,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Pending Work / Open Questions
 
-- Confirm with S and KK that the confetti/balance-not-increasing issue and the pool-zeroing issue don't recur. This is the second fix for the same symptom; if it recurs a third time, stop and question whether the localStorage-primary + full-document Firestore sync architecture itself (not just individual field sync logic) needs to change, rather than attempting a third narrow fix.
+- The 2026-11-01 fix replaces the localStorage-based financial write decisions with server-snapshot transactions. Confirm both users have reloaded v25 and total remains 30 during normal use; future balance bugs should start with transaction errors and server data, not another local recompute.
 - Visual check shared puppy display on S / Kang / Pool cards across mobile and desktop.
 - Consider: refine transparent edges on the new basic pose assets, reducing cream halo without removing white puppy body.
 - Visual check hourly movement and Puppy Event companion transfer behavior across two devices.
@@ -353,5 +385,5 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Last Updated
 
-- Last updated by: Claude
-- Last updated date: 2026-08-22
+- Last updated by: Codex
+- Last updated date: 2026-11-01
