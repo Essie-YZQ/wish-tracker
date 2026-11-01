@@ -9,19 +9,11 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- The reported 32-wish total has been traced to a reproducible reward-reversal bug: cancelling a claimed habit after spending/transferring all personal wishes refunded Pool without debiting the user. The local fix blocks this reversal until the user has enough wishes, preserving both the check and claim.
+- Investigation of the reported 32-wish total found a reproducible reward-reversal bug: cancelling a claimed habit after spending/transferring all personal wishes refunded Pool without debiting the user. The deployed fix blocks this reversal until the user has enough wishes, preserving both the check and claim.
 - All balance-mutating actions now use Firestore transactions with fresh server balances and habit claims, nonnegative-integer checks, and an exact-total-30 invariant. This replaces blind increment writes, which could overdraw during concurrent actions. Local balances and confetti are published only after a successful commit.
 - Ten persistent regression tests pass (`node --test tests/wish-balances.test.cjs`). Production correction and deployment status are recorded in the 2026-11-01 section below.
 
-- The Withdraw button appeared broken (displayed pool balance showed wishes available but clicking did nothing) due to a stale local recompute of `pool_balance` fighting the independently-synced Firestore value — fixed 2026-08-22, see "Withdraw Button Broken / Pool Balance Display Bug Fix" below.
-- Underlying that: the Mystery Seed draw's 2-wish cost was never being credited back to the pool, which genuinely drained the real pool to 0 over time (breaking the intended constant-30-total design). Code fixed 2026-08-22 (see "Mystery Seed Draw Not Returning Cost to Pool Fix" below) and the live Firestore `poolBalance` has been manually corrected from 0 to 22 to restore the constant-30 total — see "Production data correction" note at the end of that section. Both fixes pushed to `origin/main`; fully resolved.
-- The wish-balance race condition recurred after the 2026-07-08 fix and has been fixed again, more thoroughly, on 2026-07-11 — see "Wish Balance Sync Bug Fix (Round 2)" below. The 2026-07-08 fix was necessary but not sufficient.
-- The weekly-sources emoji row (which habits earned wishes this week) had the same class of bug and was fixed the same day — see "Weekly Sources Display Bug Fix (2026-07-11)" below.
-- S's `drink_water` and `sleep_early` weekly targets lowered from 7 to 5 (2026-07-11, owner request).
-- Puppy Companion System and Firebase dog sync are shipped to production.
-- Approved idle puppy designs are the master visual references for future puppy assets.
-- Puppy location/pose state now syncs through Firebase so S and Kang see the same dogs.
-- Next work should focus on visual QA and optional placement expansion beyond S / Kang / Pool cards.
+- The product is feature-complete. Current work is maintenance of the 30-wish economy; puppy visuals and future placement ideas are optional backlog, not unfinished launch work.
 
 ---
 
@@ -29,8 +21,8 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
 - Asset versions: `style.css?v=23`, `script.js?v=25`
-- Latest code: the 2026-11-01 conservation fix is prepared locally; see the deployment status below.
-- Production branch: `origin/main` includes the wish-balance race fix (both rounds), the weekly-sources fix, the target_per_week change, and the Firebase dog sync fix.
+- Latest code commit: `c71c4b0 Fix wish conservation with transactional balance actions` (pushed to `origin/main` 2026-11-01).
+- Production branch: `origin/main` includes the conservation transactions, earlier balance/source fixes, target changes, and shared puppy state.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
 - Two users: S (`user_id: "s"`, emoji 🐑) and KK (`user_id: "kk"`, emoji 🐷)
@@ -255,7 +247,7 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 
 **Production correction:** completed 2026-11-01 at `18:53:01.897665Z`. Backed up the full document locally, then patched only `poolBalance` from 8 to 6 using the document update-time precondition. Verified every other field in the PATCH response matched the backup and reread confirmed `22 + 2 + 6 = 30`. Historical snapshots remain unchanged. Temporary backup: `/tmp/wish-tracker-live-repair-backup.json`.
 
-**Deployment:** pending. Publish the tested code to the existing `main` branch / GitHub Pages site, then verify the live asset version. Older already-open tabs keep running old JavaScript until reloaded.
+**Deployment:** completed. Commit `c71c4b0` is on `origin/main`; [GitHub Pages run 41338909966](https://github.com/Essie-YZQ/wish-tracker/actions/runs/41338909966) succeeded. The live HTML references `script.js?v=25`, and the downloaded live JavaScript matches the tested local file byte-for-byte. Older already-open tabs keep running old JavaScript until reloaded.
 
 ## All Product & Design Decisions
 
@@ -362,9 +354,9 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Both users should reload the app (hard refresh if needed) and use it normally for a few days; watch specifically for the confetti-without-increase and balance-reset patterns.
-- If it recurs, capture what both S's and KK's devices were doing right before/after (which actions, roughly how close in time) — that detail was not available for round 1 or round 2 and would help pin down whether it's the `sHabitStatus` full-overwrite gap noted in Known Issues or something else entirely.
-- Test two devices/browsers against the production deployment and confirm `dogState` keeps puppy placement/pose synchronized.
+- Both users should reload every open app tab to load v25. Confirm S + KK + Pool stays 30 during normal use.
+- If another balance issue occurs, capture the exact actions, device timing, displayed/server balances, and transaction errors. Check for an old tab still running pre-v25 JavaScript.
+- For code changes, run `node --test tests/wish-balances.test.cjs`; the suite uses a fake backend, so live SDK/browser checks remain useful when available.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
 
