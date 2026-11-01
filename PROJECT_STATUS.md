@@ -234,6 +234,15 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 
 **Reproduced defect:** `sync_reward_status()` used `Math.max(0, user.wish_balance - reward)` when reversing a habit reward but always added the full reward to Pool. With personal balance zero, this created one wish. Running the actual old function against a zero-balance claimed habit produces total 31; the fixed function leaves total 30 and the claim intact.
 
+**Reproduction and expected behavior (owner discussion):**
+1. Complete a habit and claim its 1-wish reward from Pool.
+2. Spend, donate, or transfer personal wishes until the balance is zero.
+3. Uncheck a day so the rewarded habit falls below its weekly target.
+4. Old behavior: the personal debit was clamped to zero while Pool received 1, increasing the economy total by 1. Repeating this defect could produce 30 -> 31 -> 32.
+5. Fixed behavior: keep the checkbox and reward claim unchanged, show the insufficient-balance message, and move no wishes. After withdrawing or receiving a wish, the user can retry; a successful reversal debits the user and credits Pool by the same amount.
+
+**Lesson for future changes:** earlier fixes addressed stale balance overwrites and missing seed-cost refunds, but missed the spent-reward reversal case. Never clamp away one side of a transfer while applying the other. Preserve this regression test whenever changing reward, spending, transfer, or undo behavior. The arithmetic defect is confirmed; the exact two historical actions responsible for the production increase remain unverified because only weekly snapshots are available.
+
 **Changes:**
 - Refuse to uncheck a claimed habit below its target when the owner cannot return the reward; restore the checkbox and show a message to withdraw/receive a wish first.
 - Route habit toggles, Donate / Withdraw / Give / Undo, and Mystery Seed through `commit_wish_action()`. Each transaction rebuilds balances and habit claims from its server snapshot, recalculates on conflict, and validates nonnegative safe integers summing to exactly 30 before writing. This prevents concurrent overspending and duplicate habit claims from stale local state.
@@ -365,6 +374,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 ## Notes for Future AI Agents
 
 - Read `AGENTS_PLAYBOOK.md` → `PROJECT_STATUS.md` → `UI_Guidelines.md` before any UI work.
+- For wish-balance bugs, read "Wish Conservation / 32-Wish Bug Fix (2026-11-01)" above first. A zero-balance reward reversal must never refund Pool without an equal personal debit; keep this edge case covered by `tests/wish-balances.test.cjs`.
 - Communicate in Chinese with the project owner. Keep technical terms in English.
 - Local test server: http://127.0.0.1:5500/index.html
 - After pushing to GitHub, bump version numbers in index.html to bust browser cache.
