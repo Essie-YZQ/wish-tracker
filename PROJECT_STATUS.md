@@ -9,14 +9,13 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- 2026-11-08: total reached 32 for the SECOND time and habit squares stopped saving. Fully addressed in three layers — see "Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)" below:
-  1. v26: fixed the bug that created the extra wishes (last week's reward claims leaking into the new week).
-  2. v27: week boundaries are now computed in New York time on every device.
-  3. `firestore.rules`: server-side rule that rejects ANY write leaving `sBalance + kkBalance + poolBalance != 30`, so even a stale tab running old code can no longer corrupt the total.
-  4. v28: every write is stamped (`clientVersion` + server `writeAt`) and `firestore.rules` only accepts stamped writes from version >= 28, so stale tabs are locked out of writing entirely (see "Fireworks Without Wishes (2026-11-08, later)").
-- Production corrected twice today: Pool 32 -> 30, then S 1 -> 6 / Pool 27 -> 22 and S `sleep_early` bogus claim cleared.
-- `firestore.rules` is LIVE in production since 2026-11-08 22:46:37Z (deployed via `firebase deploy --only firestore:rules` after the owner logged in with `firebase login`). The previous rules were fully open (`allow read, write: if true` on every document).
-- **Both users must fully reload every open tab/home-screen app.**
+- **Stable.** The wish-economy incidents of 2026-11-08 are resolved and the owner confirmed after reloading that the app works (ticks save, fireworks and the wish arrive together). No active bug.
+- Protection is now layered (details in the 2026-11-08 sections below):
+  1. v26: last week's reward claims can no longer leak into the new week (root cause of 32 totals and "fireworks without wishes").
+  2. v27: week boundaries and "today" are computed in New York time on every device.
+  3. v28 + `firestore.rules` (live since 2026-11-08 22:46:37Z): Firestore itself rejects any write that leaves `sBalance + kkBalance + poolBalance != 30`, and any write not stamped by app version >= 28, so stale tabs can no longer write at all.
+- Production data after corrections: `S 6 + KK 2 + Pool 22 = 30` (2026-11-08 22:34Z).
+- Product is feature-complete; remaining items are optional (see Pending Work).
 
 ---
 
@@ -418,7 +417,9 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Pending Work / Open Questions
 
-- Confirm both users reloaded v27 and that S + KK + Pool stays 30 during normal use. With `firestore.rules` live, a stale client's bad write now fails instead of corrupting data; if someone reports "Couldn't save", suspect an old tab first.
+- Watch for a week: S + KK + Pool should stay 30 and every completed weekly target should pay exactly 1 wish. If anyone sees "This page is out of date", that tab was stale — reloading fixes it, and the rules already blocked its write.
+- Optional: live probe of the deployed rules with a scratch document `shared_state/rules_check` (unstamped or non-30 writes -> 403, stamped valid write -> 200). Not yet run: it was blocked by the agent's auto-mode safety policy; needs explicit owner approval. Never probe with bad writes to `main`.
+- Optional, owner decision: add Firebase Authentication. Today anyone with the public API key can read the document and send stamped, conserving writes; the rules stop corruption from stale code, not a deliberate attacker.
 - Visual check shared puppy display on S / Kang / Pool cards across mobile and desktop.
 - Consider: refine transparent edges on the new basic pose assets, reducing cream halo without removing white puppy body.
 - Visual check hourly movement and Puppy Event companion transfer behavior across two devices.
@@ -429,11 +430,8 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Optional: verify the live rules with a scratch document (`shared_state/rules_check`): unstamped or non-30 writes should return 403, a stamped valid write 200. Never probe with bad writes to `main`.
-- Both users reload every open app tab / home-screen app to load v28.
-- Any change to balance logic must keep three things green: `node --test tests/wish-balances.test.cjs`, the emulator test `tests/firestore-rules.emulator.mjs`, and the deployed `firestore.rules`. If a new field or document is ever added, update `firestore.rules` in the same change or the app's writes will be rejected.
-- To redeploy rules: Firebase Console -> Firestore Database -> Rules -> paste `firestore.rules` -> Publish; or `npx firebase-tools deploy --only firestore:rules --project bloom-journal-2e692` after `firebase login`.
-- If more code changes are made later, bump `index.html` asset versions before pushing.
+- Nothing urgent. Before any change to balances, habits, weeks, or Firestore writes, read `AGENTS_PLAYBOOK.md` -> "Wish Economy & Data Integrity Rules" and follow its release checklist.
+- For any code change: run `node --test tests/wish-balances.test.cjs` (also under `TZ=Asia/Shanghai`), bump `index.html` asset versions before pushing, and verify the live file after GitHub Pages deploys.
 - Read `UI_Guidelines.md` before any further UI changes.
 
 ---

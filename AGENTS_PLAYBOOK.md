@@ -287,6 +287,51 @@ Include:
 
 ---
 
+## Wish Economy & Data Integrity Rules
+
+These rules come from repeated production incidents (2026-07 to 2026-11: lost increments, pool zeroing, 32-wish totals, fireworks without wishes). They apply to any change touching balances, habits, rewards, week logic, or Firestore writes. Incident details live in `PROJECT_STATUS.md`.
+
+### Invariants (never break)
+
+- `sBalance + kkBalance + poolBalance` is always exactly 30: integers, never negative. Every action moves wishes between exactly two of the three buckets; never create or destroy wishes, never clamp one side of a transfer.
+- A habit's `is_reward_claimed` is true only if that habit was paid 1 wish from Pool in the same week. Claim flags and day ticks from a previous week must never be applied to the current week.
+- Weeks start Monday 00:00 New York time (`WEEK_TIME_ZONE = "America/New_York"`) on every device. Never use the device's local timezone for week or "today" logic.
+- Balance-changing actions run inside `commit_wish_action()` (a Firestore transaction that rebuilds state from the server snapshot and validates the total). Never write balances from local state outside it. Feedback (fireworks, reveals) happens only after the transaction commits.
+
+### Server-side guard (`firestore.rules`)
+
+- `firestore.rules` in this repo is the source of truth and is live in production. Firestore rejects any write that breaks the 30 total or is not stamped by a current app version (`clientVersion >= minimum` and `writeAt == request.time`).
+- Every Firestore write in `script.js` must include `...write_stamp()`. A new field is fine; a new collection or document needs a rule change in the same commit.
+- Never loosen the rules to make a write pass. Fix the write.
+- Old browser tabs keep running old JavaScript until reloaded; this caused most incidents. When a fix must lock out the previous version: bump `APP_VERSION` in `script.js` AND the minimum in `firestore.rules` together, deploy the code first, then deploy the rules.
+
+### Release checklist for data-related changes
+
+1. Back up the live document (read-only REST GET) before investigating; inspect real data before theorizing.
+2. Write a regression test first and confirm it fails on the old code.
+3. `node --test tests/wish-balances.test.cjs`, also under `TZ=Asia/Shanghai` (date logic must not depend on device timezone).
+4. If writes or rules changed: run `tests/firestore-rules.emulator.mjs` in the Firestore emulator (needs Java 21+; a portable JDK in a scratch folder works).
+5. When useful, replay the real production document through old vs. new code with a fixed clock.
+6. Bump `index.html` asset versions, push, wait for GitHub Pages, confirm the live `script.js` is byte-identical to the tested file.
+7. Deploy rules if changed (`firebase deploy --only firestore:rules --project bloom-journal-2e692`; requires the owner's `firebase login`), then read the live ruleset back and compare it to the repo file.
+8. Ask both users to reload every open tab/home-screen app.
+9. Update `PROJECT_STATUS.md`: symptom, evidence, root cause, fix, validation, deployment.
+
+### Production data corrections
+
+- Only after identifying the root cause, and only with the owner's knowledge of what will change.
+- Back up first; patch only the needed fields; use a `currentDocument.updateTime` precondition; include the write stamp (`clientVersion` + server `writeAt`) or the rules reject it; diff the result against the backup; record it in `PROJECT_STATUS.md`.
+- When the correct value depends on real-world actions the data does not record (e.g. who withdrew or gave a wish), ask the owner rather than guess.
+- Never test rules with bad writes to `shared_state/main`; use a scratch document.
+
+### Owner working preferences (learned)
+
+- When the owner asks to "fix, test, and push to production", she authorizes the intermediate steps; still state what was changed in production data.
+- The owner wants recurrence prevention, not just a one-off fix. After a repeat incident, close the bug class (for example with server-side rules), not only the symptom.
+- Explain root causes in plain Chinese with concrete evidence (actual numbers from production) and a simple timeline.
+
+---
+
 ## Communication Rules
 
 - Use Chinese when communicating with the project owner.
@@ -303,6 +348,8 @@ Before making any UI changes, read the following files in order:
 1. AGENTS_PLAYBOOK.md
 2. PROJECT_STATUS.md
 3. UI_Guidelines.md
+
+Before changing balances, habits, rewards, week logic, or any Firestore write, also read "Wish Economy & Data Integrity Rules" above and the latest wish-related incident sections in PROJECT_STATUS.md.
 
 ---
 
