@@ -242,3 +242,21 @@ test('corrupted totals show a specific repair message instead of a generic error
   assert.equal(server.writes.length, 0);
   assert.match(app.state().ui_message, /32/);
 });
+
+// 2026-11-08: weeks are computed in New York time on every device. Run this file
+// under several TZ values (e.g. TZ=Asia/Shanghai) to prove device timezone is irrelevant.
+test('week boundaries follow New York time regardless of device timezone', () => {
+  const app = client(backend());
+  const week = iso => app.run(`get_week_start_date(new Date('${iso}'))`);
+  const today = iso => app.run(`get_new_york_date_string(new Date('${iso}'))`);
+  // Monday 13:00 in Beijing is still Sunday 23:59 in New York -> previous week.
+  assert.equal(week('2026-11-09T04:59:00Z'), '2026-11-02');
+  assert.equal(today('2026-11-09T04:59:00Z'), '2026-11-08');
+  // Monday 00:00 in New York starts the new week.
+  assert.equal(week('2026-11-09T05:00:00Z'), '2026-11-09');
+  // Daylight saving time (EDT, UTC-4): Monday 2026-06-01 00:00 NY = 04:00Z.
+  assert.equal(week('2026-06-01T03:59:00Z'), '2026-05-25');
+  assert.equal(week('2026-06-01T04:00:00Z'), '2026-06-01');
+  // Week rollover across a month/year boundary.
+  assert.equal(week('2027-01-01T17:00:00Z'), '2026-12-28');
+});

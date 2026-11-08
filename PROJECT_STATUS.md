@@ -9,18 +9,21 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- 2026-11-08: total reached 32 again and habit squares stopped saving. Fixed in v26 (stale-week claim leak + timezone weekStart gate); production Pool corrected 32 -> 30. See "Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)" below.
-- **Both users must fully reload every open tab/home-screen app.** Evidence shows a pre-v25 client is still writing to Firestore; old code cannot be fixed remotely.
-- Recommended next step: add Firestore Security Rules that reject any write where `sBalance + kkBalance + poolBalance != 30`, so stale clients can no longer corrupt the total.
-- Thirteen regression tests pass (`node --test tests/wish-balances.test.cjs`).
+- 2026-11-08: total reached 32 for the SECOND time and habit squares stopped saving. Fully addressed in three layers — see "Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)" below:
+  1. v26: fixed the bug that created the extra wishes (last week's reward claims leaking into the new week).
+  2. v27: week boundaries are now computed in New York time on every device.
+  3. `firestore.rules`: server-side rule that rejects ANY write leaving `sBalance + kkBalance + poolBalance != 30`, so even a stale tab running old code can no longer corrupt the total. **Deployment status is recorded in that section.**
+- Production Pool corrected 32 -> 30.
+- **Both users must fully reload every open tab/home-screen app.**
 
 ---
 
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=26`
-- Latest code commit: `c71c4b0 Fix wish conservation with transactional balance actions` (pushed to `origin/main` 2026-11-01).
+- Asset versions: `style.css?v=23`, `script.js?v=27`
+- Latest code commits: `f4b18d6` (v26 claim-leak fix) and the v27 New York week / Firestore Rules commit, both pushed to `origin/main` 2026-11-08.
+- Firestore Security Rules: source of truth is `firestore.rules` in this repo (`firebase.json` points to it).
 - Production branch: `origin/main` includes the conservation transactions, earlier balance/source fixes, target changes, and shared puppy state.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
 - Firebase document: `shared_state/main` in project `bloom-journal-2e692`
@@ -32,7 +35,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ### Wish & Balance System
 - Each user earns wishes by completing habits. Wishes are stored in personal balance.
-- `sBalance + kkBalance + poolBalance` is a closed economy that must always equal a constant 30. `poolBalance` is a stored Firestore field, not derived/recomputed during rendering. Balance changes are read, checked, and committed together in a Firestore transaction (2026-11-01); older fixes used `increment()` deltas. Every balance-mutating action must move wishes between exactly two of these three buckets — never create or destroy them.
+- `sBalance + kkBalance + poolBalance` is a closed economy that must always equal a constant 30, enforced in two places: the client transaction (`assert_wish_balances`) and the server (`firestore.rules`). `poolBalance` is a stored Firestore field, not derived/recomputed during rendering. Balance changes are read, checked, and committed together in a Firestore transaction (2026-11-01); older fixes used `increment()` deltas. Every balance-mutating action must move wishes between exactly two of these three buckets — never create or destroy them.
 - **Donate**: send 1 personal wish back to Pool (undoable).
 - **Withdraw**: take 1 wish from Pool to personal balance (undoable).
 - **Give to KK / Give to S**: transfer 1 wish to the other user (undoable).
@@ -259,23 +262,36 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 
 ### Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)
 
-**Reported:** total showed 32; habit squares could not be ticked.
+**Reported by owner:** the total showed 32 (should be 30), and habit squares could not be ticked. This was the second time the total reached 32 (first: 2026-11-01).
 
-**Production evidence:** `sBalance=0, kkBalance=0, poolBalance=32`; history snapshot for `2026-11-02` also 0/0/32. `weekStart` was `2026-11-09` while US local week was `2026-11-02` (a device in a later timezone had already rolled over). `sHabitStatus` still held LAST week's dates (2026-10-26..11-01) with `is_reward_claimed=true` on 6 habits.
+**Production evidence (read-only, before any change):**
+- `sBalance=0, kkBalance=0, poolBalance=32`; history snapshot for week `2026-11-02` also 0/0/32.
+- `weekStart` was `2026-11-09` at 2026-11-08 16:03 New York time, so some device whose local clock was already Monday (a timezone ahead of New York) had rolled over early.
+- `sHabitStatus` still held LAST week's dates (2026-10-26..11-01) with `is_reward_claimed=true` on 6 habits (S had not ticked anything yet this week).
 
-**Root causes:**
-1. *Squares not clickable (immediate):* every v25 action runs `assert_wish_balances()`; with total 32 every transaction threw, and the UI only showed a generic "Couldn't save" message. This guard is correct (fail closed) but hid the real reason.
-2. *Claim leak (latent, both v24 and v25):* `applyHabitStatus()` copied `is_reward_claimed` from a stored map even when the map's dates were from a previous week (user had not ticked anything yet this week). The habit then looked "claimed, 0 done", so the next tick ran the reward-reversal branch. In v25 at 0 balance this blocks the tick ("You need 1 wish to undo this reward") — replaying live data shows S would have been unable to tick 6 habits from Monday 11-09. In pre-v25 code the reversal clamps the user debit at 0 but still credits Pool +1, which is how the total went 30 -> 32.
-3. *How 32 was written despite v25 guards:* v25 can never write a non-30 total or a non-30 history snapshot (both happen only after an asserted transaction). The 0/0/32 snapshot therefore proves a pre-v25 tab was still open and writing (KK's habit map was updated this week; all KK claims are now false, consistent with leaked claims being reversed by old code).
-4. *Timezone weekStart gate:* `merge_transaction_state()` ignored a user's habit map whenever the shared `weekStart` differed from the local week. A device in a later timezone writing next week's `weekStart` made US devices start from blank habits, so a tick could wipe the week's ticks and re-claim rewards.
+**Problem 1 — squares not clickable (immediate cause):** every v25 action runs `assert_wish_balances()` inside its transaction. With total 32 every transaction threw, so every tick was refused. The UI only showed a generic "Couldn't save this change. Please refresh" message, which hid the real reason (refreshing could never help). The guard itself is correct: fail closed rather than spread corrupted data.
 
-**Fix (v26):** `applyHabitStatus()` ignores any habit map whose date keys are not in the habit's current week (including its claim flag). `merge_transaction_state()` no longer gates habit maps on the shared `weekStart` (sources icons still are). `assert_wish_balances()` throws `WishTotalError` with the actual numbers, shown directly to the user ("Wish data needs repair: S 0 + KK 0 + Pool 32 = 32...").
+**Problem 2 — why 32 (root cause):** `applyHabitStatus()` copied `is_reward_claimed` from a stored habit map even when that map's dates were from a previous week. In the new week the habit then looked "reward claimed, 0 days done", so the next tick ran the reward-reversal branch:
+- in v25 at 0 balance the tick is refused ("You need 1 wish to undo this reward") — replaying the real production document showed S would have been unable to tick 6 habits from Monday 11-09;
+- in pre-v25 code the reversal clamps the user's debit at 0 but still credits Pool +1. Two such ticks: 30 -> 32.
 
-**Validation:** 3 new regression tests written first and confirmed failing on v25, then passing (13/13 total). Replayed the real production document (pool set to 30) against v25 and v26 with the clock at 2026-11-08 and 2026-11-09: v25 blocks S's tick on 11-09, v26 accepts it, total stays 30.
+**Why old code was still writing:** v25 cannot write a non-30 total or a non-30 history snapshot (both only happen after an asserted transaction), so the 0/0/32 snapshot proves a pre-v25 tab/home-screen app was still open and writing. KK's habit map was updated this week and all KK claims are now false, consistent with leaked claims being reversed by that old code. Code fixes can never reach an already-open old tab, which is exactly why this happened twice.
 
-**Production correction:** 2026-11-08 `22:07:57Z`, patched only `poolBalance` 32 -> 30 via REST with `currentDocument.updateTime` precondition; PATCH response diff vs backup confirmed only `poolBalance` changed. Both users were at 0, and the extra 2 came from reversals that never debited a user, so the 2 belong in Pool. History snapshots left unchanged.
+**Problem 3 — timezones:** each device computed "this week" in its own local timezone, and `merge_transaction_state()` ignored a user's habit map whenever the shared `weekStart` differed from the local week. Once a device ahead of New York wrote next week's `weekStart`, New York devices started transactions from blank habits, so a tick could wipe the week's ticks and re-claim rewards.
 
-**Not fixed (owner decision needed):** week boundaries are computed in each device's local timezone, so for a few hours each week two devices disagree on the current week. v26 makes this harmless for balances and habit maps; weekly-source icons may still briefly disappear. A canonical timezone for week boundaries would remove it entirely.
+**Fixes and additions:**
+1. **v26 (`f4b18d6`)** — `applyHabitStatus()` ignores any habit map whose date keys are not in the habit's current week (including its claim flag). `merge_transaction_state()` no longer gates habit maps on the shared `weekStart` (weekly-source icons still are). New `WishTotalError`: when the 30 check fails the user sees the actual numbers, e.g. "Wish data needs repair: S 0 + KK 0 + Pool 32 = 32, expected 30. Changes are paused."
+2. **v27** — new `WEEK_TIME_ZONE = "America/New_York"` and `get_new_york_date_string()`; `get_week_start_date()` and `get_today_date_string()` use the New York calendar date on every device. The new week starts Monday 00:00 New York time everywhere (e.g. Monday 13:00 Beijing time in winter, 12:00 in summer).
+3. **`firestore.rules` + `firebase.json` (new)** — server-side guard on `shared_state/{docId}`: reads open; create/update only if the document AFTER the write has integer, nonnegative `sBalance/kkBalance/poolBalance` summing to exactly 30; `main` can never be deleted; all other collections denied (the app uses none). Because the rule checks the resulting document, an old client's `increment()` or a lone Pool +1 is rejected by Firestore itself, regardless of app version. If data were ever broken again, all writes except a repairing one are refused, so damage cannot spread.
+4. **Production data correction** — 2026-11-08 `22:07:57Z`, patched only `poolBalance` 32 -> 30 via REST with a `currentDocument.updateTime` precondition; PATCH response diff vs. backup confirmed only `poolBalance` changed. Both users were at 0 and the extra 2 came from reversals that never debited anyone, so they belong in Pool. History snapshots left unchanged.
+
+**Validation:**
+- `tests/wish-balances.test.cjs`: 4 new tests (14 total), each confirmed failing on the previous code first: last-week claim leak, another timezone's weekStart, specific repair message, New York week boundaries (incl. DST and year boundary). Passes 14/14 under `TZ=America/New_York`, `Asia/Shanghai`, and `America/Los_Angeles`.
+- Replayed the real production document (Pool 30) against v25 and v26 at 2026-11-08 and 2026-11-09: v25 blocks S's tick on 11-09, v26 accepts it, total stays 30.
+- `tests/firestore-rules.emulator.mjs` (new): runs `firestore.rules` in the official Firestore emulator — 15 rule checks (legal writes allowed; pool +1 alone, old `increment()` leak, negative, fractional, string, missing field, deleting main, other collections denied) plus 5 checks driving the REAL `script.js` through the real Firebase SDK under the rules (habit reward, give/undo/withdraw/donate, reward reversal, Mystery Seed, vase save, weekly snapshot, zero transaction errors). 20/20 pass.
+- Deployment: GitHub Pages run for `f4b18d6` succeeded; live `script.js?v=26` byte-identical to tested file. (v27 and Rules deployment: see "Deployment status" below.)
+
+**Deployment status:** v27 pushed to `origin/main` 2026-11-08. `firestore.rules` NOT yet live in production — needs the owner to publish (no Firebase admin login on this machine).
 
 ## All Product & Design Decisions
 
@@ -329,17 +345,24 @@ Repository files do not store test unlock state. Flower unlock progress persists
 - **White dog visibility**: white body on light lavender card has low natural contrast. Mitigated with CSS `drop-shadow`. If card background changes, may need to revisit.
 - **New basic pose transparent assets**: current cutouts intentionally keep a visible soft cream safety halo around puppies to preserve body pixels. They may need edge refinement later, but they are integrated now so the tracker does not reference deleted legacy assets.
 - Hourly dog movement can be written by whichever open device notices the timer first; last write wins. This is acceptable for now, but a Firestore transaction/lease could make it stricter later.
-- `loadFromFirebase()` and realtime listeners may briefly display stale local data. Balance-changing writes now rebuild and validate state inside a server transaction, so stale display state cannot authorize a financial change. Read/render synchronization is separate follow-up work.
-- Habit actions now read and update the acting user's habit map within the same transaction as rewards, preventing stale concurrent habit writes. Weekly rollover and vase/dog-only writes still use the existing synchronization paths; this change does not redesign those features.
+- `loadFromFirebase()` and realtime listeners may briefly display stale local data. Balance-changing writes rebuild and validate state inside a server transaction, and `firestore.rules` rejects any non-30 result, so stale display state cannot authorize a financial change.
+- Stale tabs: an already-open tab keeps running old JavaScript until reloaded. Since `firestore.rules`, an old tab can no longer break the 30 total, but it can still show outdated numbers or write habit/vase data with old logic. Reload all tabs after every deploy.
+- No authentication: anyone with the public API key can read/write `shared_state/main` (the rules only enforce the 30 invariant and shape). Acceptable for a private 2-person app; adding Firebase Auth would be the next security step.
 
 ---
 
 ## Files Changed This Session
 
-- `script.js`: reward-reversal guard, shared transaction boundary, serialized seed draw, and commit-before-feedback behavior.
-- `index.html`: `script.js?v=25` cache version.
-- `tests/wish-balances.test.cjs`: ten persistent regression tests; no dependencies beyond Node.
-- `PROJECT_STATUS.md`: current findings, validation limits, production repair, and deployment status.
+- `script.js`: v26 claim-leak fix in `applyHabitStatus()` / `merge_transaction_state()`, `WishTotalError`; v27 New York week boundaries (`WEEK_TIME_ZONE`, `get_new_york_date_string()`).
+- `index.html`: `script.js?v=27`.
+- `firestore.rules`, `firebase.json` (new): server-side 30-wish invariant.
+- `tests/wish-balances.test.cjs`: +4 regression tests (14 total).
+- `tests/firestore-rules.emulator.mjs` (new): rules + real-app emulator test.
+- `PROJECT_STATUS.md`: this record.
+
+### Previous Session (Wish Conservation, 2026-11-01)
+
+- `script.js` (v25): reward-reversal guard, shared transaction boundary, serialized seed draw, commit-before-feedback behavior. `tests/wish-balances.test.cjs`: first ten regression tests.
 
 ### Previous Session (Weekly Sources)
 
@@ -371,7 +394,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Pending Work / Open Questions
 
-- The 2026-11-01 fix replaces the localStorage-based financial write decisions with server-snapshot transactions. Confirm both users have reloaded v25 and total remains 30 during normal use; future balance bugs should start with transaction errors and server data, not another local recompute.
+- Confirm both users reloaded v27 and that S + KK + Pool stays 30 during normal use. With `firestore.rules` live, a stale client's bad write now fails instead of corrupting data; if someone reports "Couldn't save", suspect an old tab first.
 - Visual check shared puppy display on S / Kang / Pool cards across mobile and desktop.
 - Consider: refine transparent edges on the new basic pose assets, reducing cream halo without removing white puppy body.
 - Visual check hourly movement and Puppy Event companion transfer behavior across two devices.
@@ -382,9 +405,9 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Both users should reload every open app tab to load v25. Confirm S + KK + Pool stays 30 during normal use.
-- If another balance issue occurs, capture the exact actions, device timing, displayed/server balances, and transaction errors. Check for an old tab still running pre-v25 JavaScript.
-- For code changes, run `node --test tests/wish-balances.test.cjs`; the suite uses a fake backend, so live SDK/browser checks remain useful when available.
+- Both users reload every open app tab / home-screen app to load v27.
+- Any change to balance logic must keep three things green: `node --test tests/wish-balances.test.cjs`, the emulator test `tests/firestore-rules.emulator.mjs`, and the deployed `firestore.rules`. If a new field or document is ever added, update `firestore.rules` in the same change or the app's writes will be rejected.
+- To redeploy rules: Firebase Console -> Firestore Database -> Rules -> paste `firestore.rules` -> Publish; or `npx firebase-tools deploy --only firestore:rules --project bloom-journal-2e692` after `firebase login`.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
 - Read `UI_Guidelines.md` before any further UI changes.
 
@@ -394,6 +417,8 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 - Read `AGENTS_PLAYBOOK.md` → `PROJECT_STATUS.md` → `UI_Guidelines.md` before any UI work.
 - For wish-balance bugs, read "Wish Conservation / 32-Wish Bug Fix (2026-11-01)" above first. A zero-balance reward reversal must never refund Pool without an equal personal debit; keep this edge case covered by `tests/wish-balances.test.cjs`.
+- For wish-balance bugs, also read "Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)". Habit maps from a previous week must never contribute claim flags; weeks are New York time; the server rule (`firestore.rules`) is the final guarantee of the 30 total — never loosen it to make a write pass, fix the write instead.
+- **Debugging technique that worked here (use it again):** for "sometimes works, sometimes doesn't" or data-drift bugs, don't only read code. (1) Back up and inspect the real production document read-only first — the stale `weekStart`, last-week habit dates, and the impossible 0/0/32 history snapshot pointed straight at the causes. (2) Replay the real production data through both the old and the new code with a fixed clock (e.g. Sunday vs. Monday) and compare outcomes — this proves the fix against the owner's actual situation, not just synthetic tests. (3) Write the regression test first and confirm it fails on the old code. (4) Run date-related tests under several `TZ` values. (5) For Firestore Rules, test in the emulator with the real app code, not just hand-written writes — a portable JDK in a scratch folder works when the system Java is too old.
 - Communicate in Chinese with the project owner. Keep technical terms in English.
 - Local test server: http://127.0.0.1:5500/index.html
 - After pushing to GitHub, bump version numbers in index.html to bust browser cache.

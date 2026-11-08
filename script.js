@@ -2453,13 +2453,25 @@ function count_done_days(daily_status) {
   return Object.values(daily_status).filter(Boolean).length;
 }
 
+// Week boundaries and "today" are always computed in New York time, so devices
+// in different timezones agree on which week it is (a device in Asia used to
+// roll over to next week many hours before a device in the US).
+const WEEK_TIME_ZONE = "America/New_York";
+
+function get_new_york_date_string(date_input = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: WEEK_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(new Date(date_input));
+  const part = type => parts.find(item => item.type === type).value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 function get_week_start_date(date_input) {
-  const date_value = new Date(date_input);
+  // Local midday on the New York calendar date; date arithmetic below only
+  // moves whole days, so the device's own timezone no longer matters.
+  const date_value = new Date(`${get_new_york_date_string(date_input)}T12:00:00`);
   const day_of_week = date_value.getDay();
   const monday_offset = day_of_week === 0 ? -6 : 1 - day_of_week;
-
-  // Use a midday timestamp to avoid local timezone edge cases around midnight.
-  date_value.setHours(12, 0, 0, 0);
   date_value.setDate(date_value.getDate() + monday_offset);
   return format_storage_date(date_value);
 }
@@ -2486,7 +2498,7 @@ function format_storage_date(date_input) {
 }
 
 function get_today_date_string() {
-  return format_storage_date(new Date());
+  return get_new_york_date_string(new Date());
 }
 
 function format_day_header(date_value) {

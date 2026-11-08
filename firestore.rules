@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// Server-side guard for Bloom Journal's closed 30-wish economy.
+// Every write to a shared_state document is checked against the document as it
+// would look AFTER the write. Any write leaving S + KK + Pool != 30 (or a
+// negative / non-integer balance) is rejected by Firestore itself, no matter
+// which client or app version sent it -- including stale tabs running old code.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function validWishTotal(d) {
+      return d.sBalance is int && d.kkBalance is int && d.poolBalance is int
+        && d.sBalance >= 0 && d.kkBalance >= 0 && d.poolBalance >= 0
+        && d.sBalance + d.kkBalance + d.poolBalance == 30;
+    }
+
+    match /shared_state/{docId} {
+      allow read: if true;
+      allow create, update: if validWishTotal(request.resource.data);
+      // The live document can never be deleted; scratch docs (rule checks) can.
+      allow delete: if docId != 'main';
+    }
+
+    // The app uses no other collections; everything else is denied by default.
+  }
+}
