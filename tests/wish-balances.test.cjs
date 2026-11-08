@@ -44,7 +44,7 @@ function client(server) {
     console: { log() {}, error() {} },
     document: { addEventListener() {} },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
-    db: {}, doc: () => ({}),
+    db: {}, doc: () => ({}), serverTimestamp: () => 'SERVER_TIMESTAMP',
     runTransaction: (_db, callback) => server.transaction(callback),
     getDoc: async () => ({ exists: () => true, data: () => clone(server.data) }),
     updateDoc: async (_ref, update) => {
@@ -259,4 +259,21 @@ test('week boundaries follow New York time regardless of device timezone', () =>
   assert.equal(week('2026-06-01T04:00:00Z'), '2026-06-01');
   // Week rollover across a month/year boundary.
   assert.equal(week('2027-01-01T17:00:00Z'), '2026-12-28');
+});
+
+// 2026-11-08: firestore.rules only accepts writes stamped by current app code.
+test('every kind of write carries the app version and a server timestamp', async () => {
+  const server = backend([2, 0, 28]);
+  const app = client(server);
+  const date = Object.keys(app.state().users[0].habits[8].daily_status)[0];
+  await app.toggle('s', 's_meet_friends', date);          // transaction + history snapshot
+  await app.action('return_to_pool');                      // balance transaction
+  await app.run('saveBalancesToFirebase(get_state())');    // vase-only save
+  await app.run('resetWeeklySourcesInFirebase(get_state().week_start_date)');
+  await app.run('save_dog_state_to_firebase()');
+  assert.ok(server.writes.length >= 6);
+  for (const write of server.writes) {
+    assert.equal(write.clientVersion, app.run('APP_VERSION'));
+    assert.equal(write.writeAt, 'SERVER_TIMESTAMP');
+  }
 });

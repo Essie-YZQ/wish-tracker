@@ -14,9 +14,20 @@ service cloud.firestore {
         && d.sBalance + d.kkBalance + d.poolBalance == 30;
     }
 
+    // Every write must be stamped by current app code: clientVersion at least the
+    // minimum below, and writeAt set to serverTimestamp() in THIS write. Old tabs
+    // never send the stamp (a merge would keep the previous writeAt, which is not
+    // equal to request.time), so they are locked out entirely. Raise the minimum
+    // together with APP_VERSION in script.js when an old version must be blocked.
+    function stampedByCurrentApp(d) {
+      return d.clientVersion is int && d.clientVersion >= 28
+        && d.writeAt == request.time;
+    }
+
     match /shared_state/{docId} {
       allow read: if true;
-      allow create, update: if validWishTotal(request.resource.data);
+      allow create, update: if validWishTotal(request.resource.data)
+        && stampedByCurrentApp(request.resource.data);
       // The live document can never be deleted; scratch docs (rule checks) can.
       allow delete: if docId != 'main';
     }

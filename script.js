@@ -1,5 +1,16 @@
 import { db } from './firebase.js?v=2';
-import { doc, getDoc, updateDoc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { doc, getDoc, updateDoc, onSnapshot, runTransaction, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+// Every write carries this version plus a server timestamp. firestore.rules only
+// accepts writes stamped with a current version and THIS write's server time, so
+// a stale tab still running older JavaScript (which never sends the stamp) cannot
+// write at all. Bump APP_VERSION together with the minimum in firestore.rules
+// whenever an old version must be locked out.
+const APP_VERSION = 28;
+
+function write_stamp() {
+  return { clientVersion: APP_VERSION, writeAt: serverTimestamp() };
+}
 
 // Serializes read -> mutate -> save -> push-to-Firebase actions so overlapping calls
 // (e.g. checking off several habits in quick succession) can't interleave and clobber
@@ -187,6 +198,7 @@ function subscribeToFirebaseBalances() {
 
 function buildFirebaseUpdate(state, habit_user_id = null, changed_source_user_ids = []) {
   const update = {
+    ...write_stamp(),
     weekStart: state.week_start_date,
     sVaseFlowers: state.users[0].vase_flowers || [],
     kkVaseFlowers: state.users[1].vase_flowers || [],
@@ -308,7 +320,9 @@ async function commit_wish_action(user_id, mutate, habit_user_id = null) {
     const state = get_state();
     state.ui_message = error instanceof WishTotalError
       ? error.message
-      : "Couldn't save this change. Please refresh and try again.";
+      : error?.code === "permission-denied"
+        ? "This page is out of date. Please close and reopen it to load the latest version."
+        : "Couldn't save this change. Please refresh and try again.";
     state.message_user_id = user_id;
     save_state(state);
     render_app();
@@ -346,7 +360,7 @@ async function saveWeeklySnapshot(state) {
     history.push(currentSnapshot);
   }
 
-  await updateDoc(docRef, { history });
+  await updateDoc(docRef, { ...write_stamp(), history });
 
   console.log("Saved weekly snapshot:", currentSnapshot);
 }
@@ -359,6 +373,7 @@ async function resetWeeklySourcesInFirebase(current_week_start) {
   // matching the current week, and would keep showing last week's leftover icons until
   // some unrelated action happened to push a fresh weekStart.
   await updateDoc(docRef, {
+    ...write_stamp(),
     sWeeklySources: [],
     kkWeeklySources: [],
     weekStart: current_week_start
@@ -553,7 +568,7 @@ function apply_shared_dog_state(raw) {
 
 async function save_dog_state_to_firebase() {
   const docRef = doc(db, "shared_state", "main");
-  await updateDoc(docRef, { dogState: serialize_dog_state() });
+  await updateDoc(docRef, { ...write_stamp(), dogState: serialize_dog_state() });
 }
 
 async function apply_or_create_shared_dog_state(raw) {
