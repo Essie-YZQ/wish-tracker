@@ -326,7 +326,7 @@ These rules come from repeated production incidents (2026-07 to 2026-11: lost in
 
 ### Owner working preferences (learned)
 
-- When the owner asks to "fix, test, and push to production", she authorizes the intermediate steps; still state what was changed in production data.
+- When the owner asks to "fix, test, and push to production", that authorizes the intermediate steps; still state what was changed in production data.
 - The owner wants recurrence prevention, not just a one-off fix. After a repeat incident, close the bug class (for example with server-side rules), not only the symptom.
 - Explain root causes in plain Chinese with concrete evidence (actual numbers from production) and a simple timeline.
 
