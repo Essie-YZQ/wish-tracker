@@ -12,8 +12,10 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 - 2026-11-08: total reached 32 for the SECOND time and habit squares stopped saving. Fully addressed in three layers — see "Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)" below:
   1. v26: fixed the bug that created the extra wishes (last week's reward claims leaking into the new week).
   2. v27: week boundaries are now computed in New York time on every device.
-  3. `firestore.rules`: server-side rule that rejects ANY write leaving `sBalance + kkBalance + poolBalance != 30`, so even a stale tab running old code can no longer corrupt the total. **Deployment status is recorded in that section.**
-- Production Pool corrected 32 -> 30.
+  3. `firestore.rules`: server-side rule that rejects ANY write leaving `sBalance + kkBalance + poolBalance != 30`, so even a stale tab running old code can no longer corrupt the total.
+  4. v28: every write is stamped (`clientVersion` + server `writeAt`) and `firestore.rules` only accepts stamped writes from version >= 28, so stale tabs are locked out of writing entirely (see "Fireworks Without Wishes (2026-11-08, later)").
+- Production corrected twice today: Pool 32 -> 30, then S 1 -> 6 / Pool 27 -> 22 and S `sleep_early` bogus claim cleared.
+- **`firestore.rules` is NOT live until the owner publishes it in Firebase Console** (no admin login on this machine). Until then, stale tabs can still write.
 - **Both users must fully reload every open tab/home-screen app.**
 
 ---
@@ -21,8 +23,8 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=27`
-- Latest code commits: `f4b18d6` (v26 claim-leak fix) and the v27 New York week / Firestore Rules commit, both pushed to `origin/main` 2026-11-08.
+- Asset versions: `style.css?v=23`, `script.js?v=28` (`APP_VERSION = 28`)
+- Latest code commits (all pushed and deployed 2026-11-08): `f4b18d6` v26 claim-leak fix, `a0f3de1` v27 New York weeks + `firestore.rules`, `01b0855` v28 write stamps / stale-version lockout.
 - Firestore Security Rules: source of truth is `firestore.rules` in this repo (`firebase.json` points to it).
 - Production branch: `origin/main` includes the conservation transactions, earlier balance/source fixes, target changes, and shared puppy state.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
@@ -291,7 +293,28 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 - `tests/firestore-rules.emulator.mjs` (new): runs `firestore.rules` in the official Firestore emulator — 15 rule checks (legal writes allowed; pool +1 alone, old `increment()` leak, negative, fractional, string, missing field, deleting main, other collections denied) plus 5 checks driving the REAL `script.js` through the real Firebase SDK under the rules (habit reward, give/undo/withdraw/donate, reward reversal, Mystery Seed, vase save, weekly snapshot, zero transaction errors). 20/20 pass.
 - Deployment: GitHub Pages run for `f4b18d6` succeeded; live `script.js?v=26` byte-identical to tested file. (v27 and Rules deployment: see "Deployment status" below.)
 
-**Deployment status:** v27 pushed to `origin/main` 2026-11-08. `firestore.rules` NOT yet live in production — needs the owner to publish (no Firebase admin login on this machine).
+**Deployment status:** v27 deployed 2026-11-08 (GitHub Pages run succeeded; live `script.js?v=27` byte-identical to the tested file). `firestore.rules` NOT yet live in production — needs the owner to publish (no Firebase admin login on this machine).
+
+### Fireworks Without Wishes (2026-11-08, later the same day)
+
+**Reported by owner:** after completing a habit's weekly target, fireworks played but no wish was added — inconsistent ("sometimes it adds, sometimes not"). S had completed study, workout, cooking, drink water, dry hair and meet friends (6 rewards due) but had only 1 wish.
+
+**Production evidence:** `S 1 + KK 2 + Pool 27 = 30` (total correct). `sHabitStatus` (now this week's dates) had 7 habits with `is_reward_claimed=true`, including `s_sleep_early` with 0 days done — impossible in v26+, it can only be last week's leaked flag. No Mystery Seed draws and no new flowers, so the wishes were never paid, not spent. KK's 2: owner confirmed she used Withdraw on KK's card to give KK rewards he missed while the tracker was broken (legitimate).
+
+**Root cause:** the same leaked-claim bug fixed in v26, but executed by a tab that was still running v25 (opened before the deploy and never reloaded). That tab merged last week's claim flags into this week's habits: habits carrying a leaked flag paid nothing when completed, and ticking one below target (violin) ran a reversal that took a paid wish back. Rewards from non-leaked habits did fire fireworks and pay, then later reversals removed them — hence "fireworks but no wish", varying with click order. Replaying the real pre-fix document with this week's tick sequence: v25 -> 3 fireworks, S ends at 0; v28 -> 6 fireworks, S = 6, claims exactly the six completed habits.
+
+**Why it keeps happening:** every fix so far only protects tabs that load the new code. Any tab left open keeps running old JavaScript and keeps writing. Rules that only check the 30 total cannot catch this case, because a missing payment still conserves the total.
+
+**Fix (v28, `01b0855`):**
+- `APP_VERSION = 28` and `write_stamp()` in `script.js`: every Firestore write (balance transactions, vase saves, history snapshots, weekly-source reset, dog state) includes `clientVersion: APP_VERSION` and `writeAt: serverTimestamp()`.
+- `firestore.rules` `stampedByCurrentApp()`: a write is accepted only if `clientVersion >= 28` AND `writeAt == request.time`. Old tabs never send `writeAt`, so a merge keeps the previous timestamp, which never equals the current request time -> denied. Old tabs are therefore read-only: they can still display data, but every write fails, and current code tells the user "This page is out of date. Please close and reopen it."
+- **Maintenance rule:** whenever a future fix must lock out the previous version, bump `APP_VERSION` in `script.js` AND the minimum in `firestore.rules`, deploy the code first, then publish the rules.
+
+**Production correction:** 2026-11-08 `22:34:22Z`, one atomic REST commit with `updateTime` precondition: `sBalance` 1 -> 6, `poolBalance` 27 -> 22, `sHabitStatus.s_sleep_early.is_reward_claimed` true -> false, plus the v28 stamp. Diff vs. backup confirmed only those fields changed. Result: `S 6 + KK 2 + Pool 22 = 30`.
+
+**Validation:** `tests/wish-balances.test.cjs` 15/15 (new: every write type carries the stamp), passing under New York and Shanghai TZ. `tests/firestore-rules.emulator.mjs` 26/26: adds unstamped-write denied (even if it conserves), old-tab dog-only write denied, older version denied, reused stamp denied, stamped write allowed; the real `script.js` (habit reward, give/undo/withdraw/donate, reversal, seed, vase, snapshot, dog state, weekly reset) works under the new rules with zero errors. v28 deployed; live `script.js?v=28` byte-identical to the tested file.
+
+
 
 ## All Product & Design Decisions
 
@@ -346,7 +369,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 - **New basic pose transparent assets**: current cutouts intentionally keep a visible soft cream safety halo around puppies to preserve body pixels. They may need edge refinement later, but they are integrated now so the tracker does not reference deleted legacy assets.
 - Hourly dog movement can be written by whichever open device notices the timer first; last write wins. This is acceptable for now, but a Firestore transaction/lease could make it stricter later.
 - `loadFromFirebase()` and realtime listeners may briefly display stale local data. Balance-changing writes rebuild and validate state inside a server transaction, and `firestore.rules` rejects any non-30 result, so stale display state cannot authorize a financial change.
-- Stale tabs: an already-open tab keeps running old JavaScript until reloaded. Since `firestore.rules`, an old tab can no longer break the 30 total, but it can still show outdated numbers or write habit/vase data with old logic. Reload all tabs after every deploy.
+- Stale tabs: an already-open tab keeps running old JavaScript until reloaded. Once `firestore.rules` (min version 28) is published, such a tab cannot write anything; it may still display outdated numbers until reopened.
 - No authentication: anyone with the public API key can read/write `shared_state/main` (the rules only enforce the 30 invariant and shape). Acceptable for a private 2-person app; adding Firebase Auth would be the next security step.
 
 ---
@@ -354,9 +377,10 @@ Repository files do not store test unlock state. Flower unlock progress persists
 ## Files Changed This Session
 
 - `script.js`: v26 claim-leak fix in `applyHabitStatus()` / `merge_transaction_state()`, `WishTotalError`; v27 New York week boundaries (`WEEK_TIME_ZONE`, `get_new_york_date_string()`).
-- `index.html`: `script.js?v=27`.
-- `firestore.rules`, `firebase.json` (new): server-side 30-wish invariant.
-- `tests/wish-balances.test.cjs`: +4 regression tests (14 total).
+- `index.html`: `script.js?v=28`.
+- `script.js` v28: `APP_VERSION`, `write_stamp()` on every write, out-of-date message on `permission-denied`.
+- `firestore.rules`, `firebase.json` (new): server-side 30-wish invariant + stamped-write (minimum app version) lockout.
+- `tests/wish-balances.test.cjs`: +5 regression tests (15 total).
 - `tests/firestore-rules.emulator.mjs` (new): rules + real-app emulator test.
 - `PROJECT_STATUS.md`: this record.
 
@@ -405,7 +429,8 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- Both users reload every open app tab / home-screen app to load v27.
+- **Owner: publish `firestore.rules` in Firebase Console** (Firestore Database -> Rules -> paste the file -> Publish), then ask an agent to verify it live with a scratch document (`shared_state/rules_check`), never by sending bad writes to `main`.
+- Both users reload every open app tab / home-screen app to load v28.
 - Any change to balance logic must keep three things green: `node --test tests/wish-balances.test.cjs`, the emulator test `tests/firestore-rules.emulator.mjs`, and the deployed `firestore.rules`. If a new field or document is ever added, update `firestore.rules` in the same change or the app's writes will be rejected.
 - To redeploy rules: Firebase Console -> Firestore Database -> Rules -> paste `firestore.rules` -> Publish; or `npx firebase-tools deploy --only firestore:rules --project bloom-journal-2e692` after `firebase login`.
 - If more code changes are made later, bump `index.html` asset versions before pushing.
@@ -417,7 +442,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 - Read `AGENTS_PLAYBOOK.md` → `PROJECT_STATUS.md` → `UI_Guidelines.md` before any UI work.
 - For wish-balance bugs, read "Wish Conservation / 32-Wish Bug Fix (2026-11-01)" above first. A zero-balance reward reversal must never refund Pool without an equal personal debit; keep this edge case covered by `tests/wish-balances.test.cjs`.
-- For wish-balance bugs, also read "Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)". Habit maps from a previous week must never contribute claim flags; weeks are New York time; the server rule (`firestore.rules`) is the final guarantee of the 30 total — never loosen it to make a write pass, fix the write instead.
+- For wish-balance bugs, also read "Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)". Habit maps from a previous week must never contribute claim flags; weeks are New York time; the server rule (`firestore.rules`) is the final guarantee of the 30 total and of locking out stale app versions — never loosen it to make a write pass, fix the write instead. Any new Firestore write in `script.js` must include `...write_stamp()` or it will be rejected. When a symptom contradicts what the current code can do (e.g. fireworks without a wish), first suspect a stale tab running older code, and prove it by replaying production data through the old version.
 - **Debugging technique that worked here (use it again):** for "sometimes works, sometimes doesn't" or data-drift bugs, don't only read code. (1) Back up and inspect the real production document read-only first — the stale `weekStart`, last-week habit dates, and the impossible 0/0/32 history snapshot pointed straight at the causes. (2) Replay the real production data through both the old and the new code with a fixed clock (e.g. Sunday vs. Monday) and compare outcomes — this proves the fix against the owner's actual situation, not just synthetic tests. (3) Write the regression test first and confirm it fails on the old code. (4) Run date-related tests under several `TZ` values. (5) For Firestore Rules, test in the emulator with the real app code, not just hand-written writes — a portable JDK in a scratch folder works when the system Java is too old.
 - Communicate in Chinese with the project owner. Keep technical terms in English.
 - Local test server: http://127.0.0.1:5500/index.html
