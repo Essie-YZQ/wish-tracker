@@ -194,3 +194,51 @@ test('vase-only save omits balance and habit fields', async () => {
   }
   assert.deepEqual(balances(server), [5, 3, 22]);
 });
+
+// Regression (2026-11-08): a user's habit map in Firestore still holds LAST week's
+// dates with is_reward_claimed=true. Those flags must not leak into this week,
+// otherwise ticking a box triggers a bogus reward reversal (blocked at 0 balance,
+// and in pre-v25 code a +1 Pool leak).
+test("last week's claimed flags do not leak into the current week", async () => {
+  const server = backend();
+  const app = client(server);
+  const dates = Object.keys(app.state().users[0].habits[3].daily_status);
+  const last_week = dates.map(date => {
+    const d = new Date(`${date}T12:00:00`); d.setDate(d.getDate() - 7);
+    return app.run(`format_storage_date(new Date(${d.getTime()}))`);
+  });
+  server.data.sHabitStatus = {
+    s_cooking: { [last_week[0]]: true, [last_week[2]]: true, [last_week[5]]: true, is_reward_claimed: true, done_count: 3 }
+  };
+  await app.toggle('s', 's_cooking', dates[0]);
+  assert.deepEqual(balances(server), [0, 0, 30]);
+  assert.equal(server.data.sHabitStatus.s_cooking[dates[0]], true);
+  assert.equal(server.data.sHabitStatus.s_cooking.is_reward_claimed, false);
+  assert.equal(app.state().ui_message, '');
+  await app.toggle('s', 's_cooking', dates[1]);
+  await app.toggle('s', 's_cooking', dates[2]);
+  assert.deepEqual(balances(server), [1, 0, 29]);
+  assert.equal(server.data.sHabitStatus.s_cooking.is_reward_claimed, true);
+});
+
+// Regression (2026-11-08): a device in a later timezone already wrote next week's
+// weekStart. This week's habit map must still be honored, not wiped.
+test('a weekStart from another timezone does not wipe the current week habit map', async () => {
+  const server = backend();
+  const app = client(server);
+  const dates = Object.keys(app.state().users[0].habits[3].daily_status);
+  server.data.sHabitStatus = { s_cooking: { [dates[0]]: true, [dates[1]]: true, is_reward_claimed: false, done_count: 2 } };
+  server.data.weekStart = '2099-01-05';
+  await app.toggle('s', 's_cooking', dates[2]);
+  assert.deepEqual(balances(server), [1, 0, 29]);
+  assert.equal(server.data.sHabitStatus.s_cooking.done_count, 3);
+  assert.equal(server.data.sHabitStatus.s_cooking[dates[0]], true);
+});
+
+test('corrupted totals show a specific repair message instead of a generic error', async () => {
+  const server = backend([0, 0, 32]);
+  const app = client(server);
+  await app.action('withdraw_from_pool');
+  assert.equal(server.writes.length, 0);
+  assert.match(app.state().ui_message, /32/);
+});

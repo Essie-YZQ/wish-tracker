@@ -25,6 +25,14 @@ function applyHabitStatus(habits, habitStatusData) {
   habits.forEach(habit => {
     const habitData = habitStatusData[habit.habit_id];
     if (!habitData) return;
+    // A stored map belongs to whichever week its date keys are from. If none of
+    // them fall in this habit's week, it is last week's data (the user has not
+    // ticked anything yet this week): ignore it entirely, including
+    // is_reward_claimed, or last week's claim leaks in and the next tick runs a
+    // bogus reward reversal.
+    const is_current_week = Object.keys(habit.daily_status)
+      .some(date => Object.prototype.hasOwnProperty.call(habitData, date));
+    if (!is_current_week) return;
 
     Object.keys(habit.daily_status).forEach(date => {
       if (typeof habitData[date] === "boolean") {
@@ -227,10 +235,17 @@ function read_balances(state) {
   return [state.users[0].wish_balance, state.users[1].wish_balance, state.pool_balance];
 }
 
+class WishTotalError extends Error {}
+
 function assert_wish_balances(balances) {
   if (balances.some(value => !Number.isSafeInteger(value) || value < 0) ||
       balances.reduce((sum, value) => sum + value, 0) !== total_wishes) {
-    throw new Error("Wish balances are out of sync. Please refresh before trying again.");
+    // Refreshing cannot fix this; the shared data itself needs repair. Name the
+    // numbers so the problem is diagnosable from a screenshot.
+    throw new WishTotalError(
+      `Wish data needs repair: S ${balances[0]} + KK ${balances[1]} + Pool ${balances[2]} ` +
+      `= ${balances.reduce((sum, value) => sum + value, 0)}, expected ${total_wishes}. Changes are paused.`
+    );
   }
 }
 
@@ -251,9 +266,9 @@ function merge_transaction_state(local_state, data) {
     const sources = data.weekStart === state.week_start_date ? data[`${prefix}WeeklySources`] || [] : [];
     user.weekly_source_icons = sources;
     user.weekly_transfer_icons = sources.filter(icon => icon === "👸" || icon === "🐷");
-    if (data.weekStart === state.week_start_date) {
-      applyHabitStatus(user.habits, data[`${prefix}HabitStatus`]);
-    }
+    // Not gated on the shared weekStart: a device in a later timezone may already
+    // have written next week's weekStart. applyHabitStatus checks each map's dates.
+    applyHabitStatus(user.habits, data[`${prefix}HabitStatus`]);
     sync_vase_flowers_to_balance(user);
   });
   return state;
@@ -291,7 +306,9 @@ async function commit_wish_action(user_id, mutate, habit_user_id = null) {
   } catch (error) {
     console.error("Wish action failed:", error);
     const state = get_state();
-    state.ui_message = "Couldn't save this change. Please refresh and try again.";
+    state.ui_message = error instanceof WishTotalError
+      ? error.message
+      : "Couldn't save this change. Please refresh and try again.";
     state.message_user_id = user_id;
     save_state(state);
     render_app();

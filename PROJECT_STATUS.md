@@ -9,18 +9,17 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
 
 ## Current Priority
 
-- Investigation of the reported 32-wish total found a reproducible reward-reversal bug: cancelling a claimed habit after spending/transferring all personal wishes refunded Pool without debiting the user. The deployed fix blocks this reversal until the user has enough wishes, preserving both the check and claim.
-- All balance-mutating actions now use Firestore transactions with fresh server balances and habit claims, nonnegative-integer checks, and an exact-total-30 invariant. This replaces blind increment writes, which could overdraw during concurrent actions. Local balances and confetti are published only after a successful commit.
-- Ten persistent regression tests pass (`node --test tests/wish-balances.test.cjs`). Production correction and deployment status are recorded in the 2026-11-01 section below.
-
-- The product is feature-complete. Current work is maintenance of the 30-wish economy; puppy visuals and future placement ideas are optional backlog, not unfinished launch work.
+- 2026-11-08: total reached 32 again and habit squares stopped saving. Fixed in v26 (stale-week claim leak + timezone weekStart gate); production Pool corrected 32 -> 30. See "Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)" below.
+- **Both users must fully reload every open tab/home-screen app.** Evidence shows a pre-v25 client is still writing to Firestore; old code cannot be fixed remotely.
+- Recommended next step: add Firestore Security Rules that reject any write where `sBalance + kkBalance + poolBalance != 30`, so stale clients can no longer corrupt the total.
+- Thirteen regression tests pass (`node --test tests/wish-balances.test.cjs`).
 
 ---
 
 ## Current Project State
 
 - App deployed: https://essie-yzq.github.io/wish-tracker/
-- Asset versions: `style.css?v=23`, `script.js?v=25`
+- Asset versions: `style.css?v=23`, `script.js?v=26`
 - Latest code commit: `c71c4b0 Fix wish conservation with transactional balance actions` (pushed to `origin/main` 2026-11-01).
 - Production branch: `origin/main` includes the conservation transactions, earlier balance/source fixes, target changes, and shared puppy state.
 - Tech stack: vanilla HTML / CSS / JavaScript, Firebase Firestore, GitHub Pages
@@ -258,6 +257,26 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 
 **Deployment:** completed. Commit `c71c4b0` is on `origin/main`; [GitHub Pages run 41338909966](https://github.com/Essie-YZQ/wish-tracker/actions/runs/41338909966) succeeded. The live HTML references `script.js?v=25`, and the downloaded live JavaScript matches the tested local file byte-for-byte. Older already-open tabs keep running old JavaScript until reloaded.
 
+### Leaked Claims / 32-Wish Recurrence Fix (2026-11-08)
+
+**Reported:** total showed 32; habit squares could not be ticked.
+
+**Production evidence:** `sBalance=0, kkBalance=0, poolBalance=32`; history snapshot for `2026-11-02` also 0/0/32. `weekStart` was `2026-11-09` while US local week was `2026-11-02` (a device in a later timezone had already rolled over). `sHabitStatus` still held LAST week's dates (2026-10-26..11-01) with `is_reward_claimed=true` on 6 habits.
+
+**Root causes:**
+1. *Squares not clickable (immediate):* every v25 action runs `assert_wish_balances()`; with total 32 every transaction threw, and the UI only showed a generic "Couldn't save" message. This guard is correct (fail closed) but hid the real reason.
+2. *Claim leak (latent, both v24 and v25):* `applyHabitStatus()` copied `is_reward_claimed` from a stored map even when the map's dates were from a previous week (user had not ticked anything yet this week). The habit then looked "claimed, 0 done", so the next tick ran the reward-reversal branch. In v25 at 0 balance this blocks the tick ("You need 1 wish to undo this reward") — replaying live data shows S would have been unable to tick 6 habits from Monday 11-09. In pre-v25 code the reversal clamps the user debit at 0 but still credits Pool +1, which is how the total went 30 -> 32.
+3. *How 32 was written despite v25 guards:* v25 can never write a non-30 total or a non-30 history snapshot (both happen only after an asserted transaction). The 0/0/32 snapshot therefore proves a pre-v25 tab was still open and writing (KK's habit map was updated this week; all KK claims are now false, consistent with leaked claims being reversed by old code).
+4. *Timezone weekStart gate:* `merge_transaction_state()` ignored a user's habit map whenever the shared `weekStart` differed from the local week. A device in a later timezone writing next week's `weekStart` made US devices start from blank habits, so a tick could wipe the week's ticks and re-claim rewards.
+
+**Fix (v26):** `applyHabitStatus()` ignores any habit map whose date keys are not in the habit's current week (including its claim flag). `merge_transaction_state()` no longer gates habit maps on the shared `weekStart` (sources icons still are). `assert_wish_balances()` throws `WishTotalError` with the actual numbers, shown directly to the user ("Wish data needs repair: S 0 + KK 0 + Pool 32 = 32...").
+
+**Validation:** 3 new regression tests written first and confirmed failing on v25, then passing (13/13 total). Replayed the real production document (pool set to 30) against v25 and v26 with the clock at 2026-11-08 and 2026-11-09: v25 blocks S's tick on 11-09, v26 accepts it, total stays 30.
+
+**Production correction:** 2026-11-08 `22:07:57Z`, patched only `poolBalance` 32 -> 30 via REST with `currentDocument.updateTime` precondition; PATCH response diff vs backup confirmed only `poolBalance` changed. Both users were at 0, and the extra 2 came from reversals that never debited a user, so the 2 belong in Pool. History snapshots left unchanged.
+
+**Not fixed (owner decision needed):** week boundaries are computed in each device's local timezone, so for a few hours each week two devices disagree on the current week. v26 makes this harmless for balances and habit maps; weekly-source icons may still briefly disappear. A canonical timezone for week boundaries would remove it entirely.
+
 ## All Product & Design Decisions
 
 ### Mystery Seed / Dog Draw Design
@@ -387,5 +406,5 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Last Updated
 
-- Last updated by: Codex
-- Last updated date: 2026-11-01
+- Last updated by: Claude Code
+- Last updated date: 2026-11-08
