@@ -15,7 +15,7 @@ Read `AGENTS_PLAYBOOK.md` and `UI_Guidelines.md` before using this file.
   3. `firestore.rules`: server-side rule that rejects ANY write leaving `sBalance + kkBalance + poolBalance != 30`, so even a stale tab running old code can no longer corrupt the total.
   4. v28: every write is stamped (`clientVersion` + server `writeAt`) and `firestore.rules` only accepts stamped writes from version >= 28, so stale tabs are locked out of writing entirely (see "Fireworks Without Wishes (2026-11-08, later)").
 - Production corrected twice today: Pool 32 -> 30, then S 1 -> 6 / Pool 27 -> 22 and S `sleep_early` bogus claim cleared.
-- **`firestore.rules` is NOT live until the owner publishes it in Firebase Console** (no admin login on this machine). Until then, stale tabs can still write.
+- `firestore.rules` is LIVE in production since 2026-11-08 22:46:37Z (deployed via `firebase deploy --only firestore:rules` after the owner logged in with `firebase login`). The previous rules were fully open (`allow read, write: if true` on every document).
 - **Both users must fully reload every open tab/home-screen app.**
 
 ---
@@ -293,7 +293,7 @@ Re-ran the same three scenarios against the pre-round-2 code (`git show HEAD:scr
 - `tests/firestore-rules.emulator.mjs` (new): runs `firestore.rules` in the official Firestore emulator — 15 rule checks (legal writes allowed; pool +1 alone, old `increment()` leak, negative, fractional, string, missing field, deleting main, other collections denied) plus 5 checks driving the REAL `script.js` through the real Firebase SDK under the rules (habit reward, give/undo/withdraw/donate, reward reversal, Mystery Seed, vase save, weekly snapshot, zero transaction errors). 20/20 pass.
 - Deployment: GitHub Pages run for `f4b18d6` succeeded; live `script.js?v=26` byte-identical to tested file. (v27 and Rules deployment: see "Deployment status" below.)
 
-**Deployment status:** v27 deployed 2026-11-08 (GitHub Pages run succeeded; live `script.js?v=27` byte-identical to the tested file). `firestore.rules` NOT yet live in production — needs the owner to publish (no Firebase admin login on this machine).
+**Deployment status:** v27 deployed 2026-11-08 (GitHub Pages run succeeded; live `script.js?v=27` byte-identical to the tested file). `firestore.rules` deployed 2026-11-08 22:46:37Z (ruleset `ce9d30cb-8a62-4a0c-8499-5108c2d64896`); the live ruleset source was read back and is byte-identical to the emulator-tested `firestore.rules`. Previous ruleset (fully open, `b2e3e40a-875a-4ea3-a97a-b4a224572489`) can be re-released from the Firebase Console Rules history if ever needed. A live write probe (scratch doc `shared_state/rules_check`) was blocked by the agent's safety policy and has not been run; enforcement is evidenced by the emulator tests plus the byte-identical live source.
 
 ### Fireworks Without Wishes (2026-11-08, later the same day)
 
@@ -429,7 +429,7 @@ Repository files do not store test unlock state. Flower unlock progress persists
 
 ## Recommended Next Step
 
-- **Owner: publish `firestore.rules` in Firebase Console** (Firestore Database -> Rules -> paste the file -> Publish), then ask an agent to verify it live with a scratch document (`shared_state/rules_check`), never by sending bad writes to `main`.
+- Optional: verify the live rules with a scratch document (`shared_state/rules_check`): unstamped or non-30 writes should return 403, a stamped valid write 200. Never probe with bad writes to `main`.
 - Both users reload every open app tab / home-screen app to load v28.
 - Any change to balance logic must keep three things green: `node --test tests/wish-balances.test.cjs`, the emulator test `tests/firestore-rules.emulator.mjs`, and the deployed `firestore.rules`. If a new field or document is ever added, update `firestore.rules` in the same change or the app's writes will be rejected.
 - To redeploy rules: Firebase Console -> Firestore Database -> Rules -> paste `firestore.rules` -> Publish; or `npx firebase-tools deploy --only firestore:rules --project bloom-journal-2e692` after `firebase login`.
